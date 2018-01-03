@@ -26,6 +26,12 @@ import functools
 import ServerHTTP
 import psutil
 import io
+import keras
+from keras.models import Sequential
+from keras.layers import Dense, Dropout, Flatten
+from keras.layers import Conv2D
+from keras import optimizers
+from keras import backend as K
 
 class Printer:
     def __init__(self, verbose=False):
@@ -36,10 +42,66 @@ class Printer:
         if (verbose is True) or (self.verbose and verbose is not False):
             print(msg)
 
+class Joypad:
+    """
+    LogKey:#Reset|Power|#P1 Up|P1 Down|P1 Left|P1 Right|P1 Select|P1 Start|P1 Y|P1 B|P1 X|P1 A|P1 L|P1 R|#P2 Up|P2 Down|P2 Left|P2 Right|P2 Select|P2 Start|P2 Y|P2 B|P2 X|P2 A|P2 L|P2 R|
+    """
+    empty =   b"|..|............|............|"
+    down =    b"|..|U...........|............|"
+    up=       b"|..|.D..........|............|"
+    left =    b"|..|..L.........|............|"
+    right =   b"|..|...R........|............|"
+    select =  b"|..|....s.......|............|"
+    start =   b"|..|.....S......|............|"
+    Y =       b"|..|......Y.....|............|"
+    B =       b"|..|.......B....|............|"
+    X =       b"|..|........X...|............|"
+    A =       b"|..|.........A..|............|"
+    L1    =   b"|..|..........l.|............|"
+    R1 =      b"|..|...........r|............|"
+    default = b"|..|............|............|"
+    all_but = b"|..|UDLRsSYBXAlr|............|"
+    l_all = list(all_but)
+    l_none = list(empty)
+
+    def __init__(self):
+        return
+
+    @staticmethod
+    def joypad_to_array(joypad):
+        """
+        Converts a joypad input to an numpy array
+        :param joypad:
+        :return:
+        """
+
+        if isinstance(joypad, bytes):
+            return np.array([j != 46 for j in joypad]) * 1
+        else:
+            return np.array([j != '.' for j in joypad]) * 1
+
+    @staticmethod
+    def array_to_joypad(array, player=1):
+        """
+
+        :param array:
+        :return:
+        """
+
+        if player > 0:
+            offset = 4 + (player - 1) * 12
+        else:
+            offset = 0
+        return_bytes = Joypad.l_none.copy()
+        for i, a in enumerate(array):
+            if bool(a):
+                return_bytes[offset + i] = Joypad.all_but[offset + i]
+
+        return bytes(return_bytes)
 
 class Emuhawk:
     def __init__(self, emuhawk_exe=None,
-                 base_dir='',
+                 base_dir=None,
                  rom_name="SuperMario.sfc",
                  movies=None,
                  max_threads=100,
@@ -65,7 +127,10 @@ class Emuhawk:
         else:
             self.emuhawk_exe = emuhawk_exe
 
-        self.base_dir = base_dir
+        if base_dir is None:
+            self.base_dir = os.getcwd()
+        else:
+            self.base_dir = base_dir
         self.params_png = ' --movie="{}" --dump-type=imagesequence --dump-name="{}" --dump-length={} --dump-close "{}"'
         self.movie = None
         self.movies = dict()
@@ -114,33 +179,31 @@ class Emuhawk:
             if waiting_time > 300:
                 break
 
-        cmd_call = self.emuhawk_exe + self.params_png.format(movie, output_filename, self.movies[movie].length,
+        cmd_call = self.emuhawk_exe + self.params_png.format(movie.filename, output_filename, movie.length,
                                                              self.rom_name)
         self.printer.log(cmd_call)
-        #print(movie, os.path.join(os.path.split(output_filename)[0], os.path.split(movie)[1]))
-        shutil.copy(movie, os.path.join(os.path.split(output_filename)[0], os.path.split(movie)[1]))
+        shutil.copy(movie.filename, os.path.join(os.path.split(output_filename)[0], os.path.split(movie.filename)[1]))
         p = subprocess.Popen(cmd_call)
-        self.running_movies.append(dict(name=movie,
+        self.running_movies.append(dict(name=movie.name,
                                         filename=output_filename,
-                                        length=self.movies[movie].length,
+                                        length=movie.length,
                                         process=p)
-
                                    )
 
     def movies_to_png(self, movies=list(), folders=list()):
         mismatch = 0
         if len(movies) == 0:
-            movies = list(self.movies.keys())
+            movies = self.movies
         if len(folders) == 0:
             folders.append(os.path.join(self.base_dir, 'movies_images'))
             mismatch = 1
-            for movie in movies:
-                movie_name = movie.split('/')[-1]
+            for movie in movies.values():
+                movie_name = os.path.split(movie.filename)[-1]
                 folders.append(os.path.join(self.base_dir, 'movies_images', movie_name))
-        if len(folders) - len(movies) > mismatch:
-            self.printer.log('movies and folders do not match')
-            # TO DO, raise error
-            return None
+        #if len(folders) - len(movies) > mismatch:
+        #    self.printer.log('movies and folders do not match')
+        #    # TO DO, raise error
+        #    return None
 
         for folder in folders:
             if not os.path.isdir(folder):
@@ -149,15 +212,15 @@ class Emuhawk:
                 except:
                     pass
 
-        for i, movie in enumerate(movies):
-            movie_name = movie.split('/')[-1]
-            output_filename = '{}/movies_images/{}/{}_frame.png'.format(self.base_dir, movie_name, movie_name)
+        for movie in movies.values():
+            #movie_name = os.path.split(movie)[-1]
+            output_filename = '{}/movies_images/{}/{}_frame.png'.format(self.base_dir, movie.name, movie.name)
             self.movie_to_png(movie, output_filename)
 
     def append_movie(self, movie):
         if movie in self.movies:
             return False
-        self.movies[movie] = movie_file(filename=movie)
+        self.movies[movie] = MovieFile(filename=movie)
         return True
 
     def append_movies(self, movies):
@@ -184,7 +247,8 @@ class Emuhawk:
                 timeout += -self.wait_time
         return timeout >= 0
 
-    def create_defined_state(self, gametype="1P", racetype="Time Trial", player="Mario", cc_class=None, cup="MUSHROOM CUP", track="GHOST VALLEY 1",
+    def create_defined_state(self, gametype="1P", racetype="Time Trial", player="Mario", cc_class=None,
+                             cup="MUSHROOM CUP", track="GHOST VALLEY 1",
                              filename_movie=None, auto_start=True):
         """
         Creates and saves a defined state at the beginning of a race
@@ -230,11 +294,11 @@ class Emuhawk:
         output_lines.append(empty_log[0].strip())
         output_lines.append(empty_log[1].strip())
 
-        joypad_down    = "|..|.D..........|............|"
-        joypad_left    = "|..|..L.........|............|"
-        joypad_right   = "|..|...R........|............|"
-        joypad_select  = "|..|.....S......|............|"
-        joypad_default = "|..|............|............|"
+        joypad_down = Joypad.down
+        joypad_left = Jopyad.left
+        joypad_right = Joypad.right
+        joypad_select = Joypad.select
+        joypad_default = Joypad.empty
         # select 1P or 2P
         output_lines.extend([joypad_default] * 262)
         output_lines.extend([joypad_select] * 8)
@@ -319,9 +383,9 @@ savestate.save("{}")
 client.exit()
 """.format(filename_state)
             filename_lua = os.path.join(os.getcwd(), "emptyMovie", 'defined_state.lua')
-        with open(filename_lua, 'w') as f:
-            f.write(lua_string)
-        self.lua_script = filename_lua
+            with open(filename_lua, 'w') as f:
+                f.write(lua_string)
+            self.lua_script = filename_lua
         self.movie = filename_movie
         self.start()
         return filename_state
@@ -419,7 +483,6 @@ class GameServer:
         self.adv_start_time = time.time()
         self.last_hash = None
         self.adv_fails = 0
-        self.new_hash = ''
         self.advanced_listener_initialized = True
         self.hash_repeat = 0
         self.index = -1
@@ -485,6 +548,73 @@ class GameServer:
     @staticmethod
     def decoder_post(message):
         return message.split('=')[-1]
+
+    @staticmethod
+    def array_to_joypad(array, player=1):
+        joypad_empty =  b'|..|............|............|'
+        joypad_keys = b'|..|............|............|'
+    def ai(self, method=None, input_args=None, run_time=2*60):
+
+        ml = ML()
+        if method is None or method not in self.valid_methods:
+            raise ValueError('method needs to be one of: {}'.format(self.valid_methods))
+
+        if method == 'socket':
+            server_receive = self.server.receive
+            decoder = self.decoder_dummy
+            server_send = self.server.connection.send
+
+        elif method == 'http':
+            server_receive = self.server.receive
+            decoder = self.decoder_post
+            server_send = self.server.send
+
+
+        with open('model.json', 'r') as f:
+            model = keras.models.model_from_json(f.read())
+
+        model.load_weights("model.h5")
+
+        start_time = time.time()
+        index = 0
+
+        ml = ML()
+
+        while time.time() - start_time < run_time:
+
+            buf = server_receive(image=True)
+            img = None
+            try:
+                img = Image.open(io.BytesIO(buf))
+            except OSError as e:
+                print(e, index)
+                buf += server_receive()
+
+            # check if round passed
+            if img is not None and self.predict_finishline(img.convert("L")):
+                finished = True
+                break
+            try:
+                # resp = response_function(decoder(buf.decode()))
+                resp = model.predict(ml.prepare_image(img))
+            except:
+                break
+            if len(buf) > 0:
+                try:
+                    continue
+                except:
+                    resp = None
+
+            if resp is not None:
+                not_send = 10
+                while not_send > 0 and resp is not None:
+                    try:
+                        server_send(resp)
+                        not_send = 0
+                    except:
+                        print('failed')
+                        not_send -= 1
+
 
     def replay(self, joypad_sequence, method=None,
                run_time=2*60):
@@ -605,13 +735,12 @@ class GameServer:
         while time.time() - start_time < run_time:
             buf = server_receive(image=True)
             if len(buf) > 0:
-                with open('index_{}.png'.format(index), 'wb') as f:
-                    f.write(buf)
+                #with open('index_{}.png'.format(index), 'wb') as f:
+                #    f.write(buf)
                 try:
                     Image.open(io.BytesIO(buf)).convert("L")
                 except OSError as e:
                     print(e, index)
-
                     buf += server_receive()
                 # check if round passed
                 if self.predict_finishline(Image.open(io.BytesIO(buf)).convert("L")):
@@ -862,17 +991,17 @@ class GameServer:
             self.printer.log('hash found3')
         if new_hash:
             self.new_index += 1
-            filename = 'D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies_images/new/new_{}.png'.format(self.new_index)
+            filename = os.path.join(os.getcwd(), 'movies_images/new/new_{}.png'.format(self.new_index))
             while os.path.isfile(filename):
                 self.new_index += 1
-                filename = 'D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies_images/new/new_{}.png'.format(self.new_index)
+                filename = os.path.join(os.getcwd(), 'movies_images/new/new_{}.png'.format(self.new_index))
 
             image.save(filename)
-            filename = 'D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies_images/new/new_{}.hash'.format(self.new_index)
+            filename = os.path.join(os.getcwd(), 'movies_images/new/new_{}.hash'.format(self.new_index))
             with open(filename, 'wb') as f:
                 pickle.dump(image_hash, f, protocol=pickle.HIGHEST_PROTOCOL)
             #filename will be used later
-            filename = 'D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies_images/new/new_{}.txt'.format(self.new_index)
+            filename = os.path.join(os.getcwd(), 'movies_images/new/new_{}.txt'.format(self.new_index))
 
         if str(image_hash) in self.hashes_finished:
             self.printer.log('Reached finish line')
@@ -993,21 +1122,49 @@ def trim_image(images, player=1, prefix='trimmed_', overwrite=True, remove_timer
 class MovieFile:
     def __init__(self, filename=''):
         self.filename = filename
+        self.name = filename
+        if not os.path.isfile(filename):
+            new_filename = os.path.join(os.getcwd(), filename)
+            if os.path.isfile(new_filename):
+                self.filename = new_filename
+            else:
+                new_filename = os.path.join(os.getcwd(), "movies", filename)
+            if os.path.isfile(new_filename):
+                self.filename = new_filename
+            else:
+                raise IOError("File could not be found: {}".format(filename))
         self.pressed_keys = list()
         self.length = -1
         if filename:
             self.parse_movie()
 
+    def __repr__(self):
+        return "Filename: {}\nLength: {}".format(self.filename,
+                                                 self.length)
+
     def parse_movie(self, log_filename='Input Log.txt'):
+        if not os.path.isfile(self.filename):
+            self.filename = os.path.join('movies_images', self.filename, self.filename)
+            if not os.path.isfile(self.filename):
+                raise ValueError('Movie file not found in: {}'.format(self.filename))
         zip_file = zipfile.ZipFile(self.filename)
         file_found = -1
         for file_index, filename in enumerate(zip_file.filelist):
-            if filename.filename == 'Input Log.txt':
+            if filename.filename == log_filename:
                 file_found = file_index
         if file_found == -1:
             # to do, raise error
             return None
-        self.read_log_file('Input Log.txt', file_zip=zip_file)
+        self.read_log_file(log_filename, file_zip=zip_file)
+
+    @staticmethod
+    def parse_log_file(filename_log):
+        if isinstance(filename_log, str):
+            with open(filename_log, 'rb') as log_file:
+                data = log_file.read().strip().splitlines()
+        else:
+            data = filename_log.read().strip().splitlines()
+        return data[2:-1]
 
     def read_log_file(self, filename_log, file_zip=None):
         if file_zip is None:
@@ -1015,11 +1172,201 @@ class MovieFile:
         else:
             log_file = file_zip.open(filename_log)
 
-        data = log_file.read().strip().splitlines()
-        log_file.close()
-        self.pressed_keys = data[2:-1]
+        data = self.parse_log_file(log_file)
+
+        self.pressed_keys = data
         self.length = len(self.pressed_keys)
         return self.pressed_keys
+
+
+class ML:
+    def __init__(self, images=None, filename_joypad=None):
+        self.crop_box_time = (145, 0, 242, 24)
+        self.zero_value = 1046243  # time 00:00:00 taken from Super Mario Kart (USA).bk2_frame_1509.png
+        self.black_bar = None
+
+        first_image = None
+        if images is None:
+            self.image_files = list()
+        elif isinstance(images, list):
+            self.image_files = images
+        elif isinstance(images, str):
+            if images.endswith('.png'):
+                self.image_files = [images]
+            else:
+                self.image_files = list()
+                first_image = self.add_images_from_dir(images)
+
+        if filename_joypad is None:
+            self.pressed_keys = list()
+        elif isinstance(filename_joypad, str):
+            if first_image is None:
+                self.pressed_keys = MovieFile.parse_log_file(filename_joypad)
+            else:
+                self.pressed_keys = MovieFile.parse_log_file(filename_joypad)[first_image[0]:]
+        else:
+            self.pressed_keys = filename_joypad
+
+    def add_dir(self, directory):
+        """
+        Adds images and joypad input from a directory
+        :param directory: string, directory which contains the required files
+        :return:
+        """
+
+        image_endings = ('.png',)
+        files = os.listdir(directory)
+        accepted_files = list()
+        for f in files:
+            if f.endswith(image_endings):
+                accepted_files.append(os.path.join(directory, f))
+        first_img = self.find_first_image(accepted_files)
+        if "Input Log.txt" in files:
+            filename_joypad = "Input Log.txt"
+        else:
+            for f in files:
+                if f.endswith(".bk2"):
+                    filename_joypad = f
+                    break
+
+        pressed_keys = MovieFile.parse_log_file(os.path.join(directory, filename_joypad))
+        self.image_files.extend(accepted_files[first_img[0]:])
+        self.pressed_keys.extend(pressed_keys[first_img[0]:])
+
+
+    def add_images_from_dir(self, directory):
+
+        image_endings = ('.png', )
+        files = os.listdir(directory)
+        accepted_files = list()
+        for f in files:
+            if f.endswith(image_endings):
+                accepted_files.append(os.path.join(directory, f))
+        first_img = self.find_first_image(accepted_files)
+        self.image_files.extend(accepted_files[first_img[0]:])
+        return first_img
+
+    def find_first_image(self, files):
+        """"
+        finds the first image which looks like as if the track is just loaded
+        """
+
+        first_image = None
+        for i, f in enumerate(files):
+            image = Image.open(f).crop(self.crop_box_time)
+            if np.sum(np.array(image)) == self.zero_value:
+                first_image = i, f
+                break
+        return first_image
+
+    def create_black_bar(self):
+        if self.black_bar is None:
+            self.black_bar = np.zeros((self.crop_box_time[3] - self.crop_box_time[1], self.crop_box_time[2] - self.crop_box_time[0], 4))
+            self.black_bar[...,3] = 255
+
+    def prepare_image(self, image, black_bar=True, player=1, gray=True):
+        if isinstance(image, str):
+            img = Image.open(image)
+        else:
+            img = image
+        img_arr = np.array(img)
+        if black_bar:
+            self.create_black_bar()
+            img_arr[self.crop_box_time[1]:self.crop_box_time[3],
+                    self.crop_box_time[0]:self.crop_box_time[2]] = self.black_bar
+        if player > 0:
+            y_start = (player - 1) * int(img_arr.shape[0] / 2)
+            y_end = player * int(img_arr.shape[0] / 2)
+            img_arr = img_arr[y_start:y_end, 0:img_arr.shape[1]]
+
+        if gray:
+            img_arr = np.array(Image.fromarray(img_arr).convert('L'))
+        return img_arr
+
+    def input_output(self, black_bar=True, player=1, gray=True):
+        """
+        Converts images and joyad input to numpy arrays
+        :return:
+        """
+
+        if self.image_files is None or self.pressed_keys is None or len(self.image_files) == 0:
+            raise ValueError("At least one image and joypad input is required")
+
+        if len(self.image_files) != len(self.pressed_keys):
+            raise ValueError("Number of images does not match length of joypad input")
+
+        if black_bar:
+            self.create_black_bar()
+
+        first_img = np.array(Image.open(self.image_files[0]).convert('L')).shape
+        input_array = np.zeros((len(self.image_files), int(first_img[0] / 2), first_img[1]))
+
+        for i, image in enumerate(self.image_files):
+            input_array[i] = self.prepare_image(image)
+
+        output_array = self.create_output_array(player)
+        print(output_array[1])
+        return input_array, output_array[0]
+
+    def create_output_array(self, player=1):
+        """
+
+        :return:
+        """
+
+        empty_input = Joypad.empty
+
+        if player not in (1, 2):
+            raise ValueError("Player must be either 1 or 2")
+        possibilities = set()
+
+        pipes = [empty_input.find(b'|')]
+        while empty_input.find(b'|', pipes[-1] + 1):
+            pipes.append(empty_input.find(b'|', pipes[-1] + 1))
+        pipes.pop(-1)
+        for inp in self.pressed_keys:
+            if isinstance(inp, bytes):
+                inp = inp.decode()
+            possibilities.add(inp[pipes[player] + 1:pipes[player + 1]])
+
+        output_array = np.zeros((len(self.pressed_keys), pipes[2] - pipes[1] - 1))
+
+        for i, inp in enumerate(self.pressed_keys):
+            if isinstance(inp, bytes):
+                inp = inp.decode()
+            possibilities.add(inp[pipes[player] + 1:pipes[player + 1]])
+            output_array[i] = Joypad.joypad_to_array(inp[pipes[player] + 1:pipes[player + 1]])
+        return output_array, possibilities
+
+    def nn(self, input, output, batch_size=50, epochs=10, keep_prob=0.8):
+
+        model = Sequential()
+
+        model.add(Conv2D(24, kernel_size=(5, 5), strides=(2, 2), activation='relu', input_shape=input.shape[1:] + (1,)))
+        model.add(Conv2D(36, kernel_size=(5, 5), strides=(2, 2), activation='relu'))
+        model.add(Conv2D(48, kernel_size=(5, 5), strides=(2, 2), activation='relu'))
+        model.add(Conv2D(64, kernel_size=(3, 3), activation='relu'))
+        model.add(Conv2D(64, kernel_size=(3, 3), activation='relu'))
+        model.add(Flatten())
+        model.add(Dense(1164, activation='relu'))
+        drop_out = 1 - keep_prob
+        model.add(Dropout(drop_out))
+        model.add(Dense(100, activation='relu'))
+        model.add(Dropout(drop_out))
+        model.add(Dense(50, activation='relu'))
+        model.add(Dropout(drop_out))
+        model.add(Dense(10, activation='relu'))
+        model.add(Dropout(drop_out))
+        model.add(Dense(output.shape[1], activation='softsign'))
+
+        model.compile(loss='categorical_crossentropy', optimizer=optimizers.adam())
+        model.fit(input.reshape(input.shape + (1, )), output, batch_size=batch_size, epochs=epochs, shuffle=True, validation_split=0.1)
+
+        model.save_weights('model_weights.h5')
+        model_json = model.to_json()
+        with open("model.json", "w") as json_file:
+            json_file.write(model_json)
+        return model
 
 
 def identical_images(image1, image2):
@@ -1328,8 +1675,29 @@ class TimeFromImage:
 
 if __name__ == '__main__':
 
-    e = Emuhawk()
-    e.create_defined_state(track="GHOST VALLEY 1", player="MARIO")
+    m = ML()
+    m.add_dir(os.path.join(os.getcwd(), 'movies_images/Super Mario Kart (USA).bk2'))
+    m.add_dir(os.path.join(os.getcwd(), 'movies_images/Super Mario Kart (USA)-2.bk2'))
+    m.add_dir(os.path.join(os.getcwd(), 'movies_images/Super Mario Kart (USA)-3.bk2'))
+    m.add_dir(os.path.join(os.getcwd(), 'movies_images/Super Mario Kart (USA)-4.bk2'))
+    m.add_dir(os.path.join(os.getcwd(), 'movies_images/Super Mario Kart (USA)-5.bk2'))
+    print('getting input')
+    i, o = m.input_output()
+    print(o[1])
+    x = m.nn(i, o)
+
+    g = GameServer(socket_autostart=True, socket_ip=socket.gethostbyname(socket.gethostname()),
+                              socket_port=9990)
+    e = Emuhawk(socket_ip=g.server.ip,
+                socket_port=g.server.port,
+                lua_script=os.path.join(os.getcwd(), 'listen.lua'))
+    e.start()
+    g.server.create_connection()
+    g.ai(method='socket')
+
+    #e.create_defined_state(track="GHOST VALLEY 1", player="MARIO")
+
+
     sys.exit()
     index = 0
     while True:
@@ -1344,16 +1712,4 @@ if __name__ == '__main__':
         with open('finished_{}.pickle'.format(index), 'w') as f:
             f.write(str(g.finished))
         index += 1
-    #e = emuhawk()
-    #e.emuhawk_exe = 'C:/Users/ashafix/Downloads/BizHawk-1.13.0/EmuHawk.exe'
-    #e.base_dir = 'D:/Users/Ashafix/Documents/GitHub/NeuroMario'
-    #e.append_movie('D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies/Super Mario Kart (USA).bk2')
-    #e.append_movie('D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies/Super Mario Kart (USA)-2.bk2')
-    #e.append_movie('D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies/Super Mario Kart (USA)-3.bk2')
-    #e.append_movie('D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies/Super Mario Kart (USA)-4.bk2')
-    #e.append_movie('D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies/Super Mario Kart (USA)-5.bk2')
-    #e.append_movie('D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies/Super Mario Kart (USA)-6.bk2')
-    #e.append_movie('D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies/Super Mario Kart (USA)-7.bk2')
-    #e.append_movie('D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies/Super Mario Kart (USA)-8.bk2')
-    #e.movies_to_png()
 
