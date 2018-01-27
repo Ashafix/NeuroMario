@@ -18,7 +18,12 @@ Other features include:
 
 The module was written for Super Mario Kart but most functions are applicable to other SNES games as well.
 
+## Architecture
 
+* [https://github.com/TASVideos/BizHawk-Prereqs/releases](Bizhawk/Emuhawk) is used for emulating the SNES console
+* A Python server (either socket, HTTP or memory mapped file based) retrieves screenshots
+* The screenshots are evaluated and a response is sent back to the emulator
+* [http://tasvideos.org/Bizhawk/LuaFunctions.html](Lua) is used as a scripting language in Emuhawk
 
 References:
 
