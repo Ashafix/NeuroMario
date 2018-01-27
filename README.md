@@ -6,6 +6,9 @@ With a very limited input (5 human runs with 5 rounds each, ~10 min of training 
 The AI has only access to the images produced by the emulator and not internal values such as position or speed.
 Using SciPy Differential Evolution optimization strategy [2] the neural net was optimized to achieve run times which were superior to the training data.
 
+![Inititial model from TensorFlow](gifs/SuperMarioKart_initial.gif)
+![Best result from self-learning](gifs/SuperMarioKart_learned.gif)
+
 Additional requirements:
 * BizHaw emulator (based on this pull request: https://github.com/TASVideos/BizHawk/pull/1080)
 * A Super Mario Kart ROM (see: http://www.retrode.org/)
