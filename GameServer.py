@@ -8,13 +8,14 @@ import collections
 import numpy as np
 import imagehash
 from PIL import Image
-import keras.models
+import yaml
 from ServerSocket import ServerSocket
 from ServerHTTP import ServerHTTP
 from Printer import Printer
 from Joypad import Joypad
 from MachineLearning import MachineLearning
 from MovieFile import MovieFile
+from utils import timeit
 try:
     import IPython.display
 except ImportError:
@@ -52,7 +53,7 @@ class GameServer:
         self.new_index = 0
         self.advanced_listener_initialized = False
         self.finished = False
-        if socket_autostart == 1:
+        if socket_autostart:
             self.server = ServerSocket(ip=socket_ip,
                                        port=socket_port)
         elif http_autostart:
@@ -78,50 +79,43 @@ class GameServer:
         self.advanced_listener_initialized = False
         self.all_hashes = None
         self.valid_methods = ('socket', 'http', 'mmf')
-        self.classifier= dict()
-        self.hashes_finished = ['6838183c3e7fff00',
-                                'ec251c1c3e7f7b00',
-                                '703838383c7fff80',
-                                '511858307cffff80',
-                                'e4270c1c3e7f7f00',
-                                '783838303cffff00',
-                                '6c2d181c3e7f7f00',
-                                '283c18383e7fff80',
-                                'f4260e1c3e3f7f00',
-                                '2c271c1c3e7f7f00',
-                                'ec261c1c3e3f7f00',
-                                '6839181c3e7fff00',
-                                '703818307cffff80',
-                                '683c18383e7fff00',
-                                '6c38181c3e7fff00',
-                                '383c38383c7fff00',
-                                '2c2d1c1c3e7f7f00',
-                                '2c3c181c3e7fff00',
-                                'ec241c1c3e7f7f00',
-                                'ec29181c3e7f7f00',
-                                '6c271c1c3e7f7b00',
-                                'ec261c1c3e7f7b00',
-                                '6c261c1c3e7f7f00',
-                                '6c2d0c1c3e7f7f00',
-                                '711840707cffff80',
-                                'ec28181c3e7fff00',
-                                'f4260c1c3e7f7f00',
-                                '783c38181c7fff80',
-                                '6ca9181c3e7f7f00',
-                                'ec270c1c3e7f7b00',
-                                '6c251c1c3e7f7f00',
-                                '2c39181c3e7fff00']
-        with open('classifier_lap_rf.txt', 'rb') as f:
+        self.classifier = dict()
+        self.hashes_finished = None
+        with open('classifiers/new_lap_rfc.pickle', 'rb') as f:
             self.classifier['lap'] = pickle.load(f)
             self.classifier['lap'].verbose = False
+        with open('classifiers/new_lap_extended_rfc.pickle', 'rb') as f:
+            self.classifier['lap2'] = pickle.load(f)
+            self.classifier['lap2'].verbose = False
         with open('classifier_runingtime.txt', 'rb') as f:
             self.classifier['runningtime'] = pickle.load(f)
         self.last_hash = ''
         self.new_hashes = list()
-
+        self.false_positives = None
+        self.true_positives = None
         # used for multiprcoessing identification
         self.id = None
         self.run_times = list()
+        self.__read_config()
+
+    def __str__(self):
+        resp = '{}: Server: {}'.format(type(self).__name__,
+                                       self.server)
+        return resp
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __read_config(self):
+        """
+        Reads the yaml config file and adds attributes
+        :return: None
+        """
+        with open("NeuroMarioConfig.yaml", 'r') as f:
+            yaml_dict = yaml.load(f)
+        self.false_positives = yaml_dict.get('finish_line_false_positives')
+        self.true_positives = yaml_dict.get('finish_line_true_positives')
+        self.hashes_finished = yaml_dict.get('hashes_finished')
 
     def init_directories(self):
         directories = ('movies_images', 'movies_images\\new', 'hashes', 'movies')
@@ -137,14 +131,16 @@ class GameServer:
     def decoder_post(message):
         return message.split('=')[-1]
 
-    def ai(self, method=None, input_args=None, run_time=5*60, max_index=5000, modelname=None, model=None, threshold=0.4, missing=None, bit_array=False, rounds=1):
+    def ai(self, method=None, input_args=None, run_time=5*60, max_index=5000, modelname='model', model=None,
+           threshold=0.4, missing=None, bit_array=False, rounds=1):
         """
 
         :param method:
         :param input_args:
-        :param run_time:
-        :param max_index:
-        :param modelname:
+        :param run_time: int, max time in seconds for which a simulation is performed,
+                         afterwards the simulation is terminated
+        :param max_index: int, maximum number of frames to use, afterwarss the simulation is terminated
+        :param modelname: string
         :param model:
         :param threshold:
         :param missing:
@@ -162,9 +158,8 @@ class GameServer:
         else:
             raise ValueError('method needs to be one of: {}'.format(self.valid_methods))
 
-        if modelname is None:
-            modelname = 'model'
         if model is None:
+            import keras.models
             with open('{}.json'.format(modelname), 'r') as f:
                 model = keras.models.model_from_json(f.read())
 
@@ -181,23 +176,22 @@ class GameServer:
             img = None
             try:
                 img = Image.open(io.BytesIO(buf))
+                img = img.convert('L')
                 index += 1
 
             except OSError as e:
                 print(e, index)
                 buf += server_receive()
 
-            # check if round passed
-            if img is not None and index > (index_finishline_passed + 1000) and self.predict_finishline(img.convert('L')):
+            # check if finish line was passed
+            if img is not None and index > (index_finishline_passed + 1000) and self.predict_finishline(img):
                 index_finishline_passed = index
                 rounds -= 1
                 if rounds <= 0:
-                    print(self.predict_finishline(img.convert('L')))
-                    print('breaking')
+                    print('breaking because finish line was recognized')
                     break
             try:
-                resp = model.predict(ml.prepare_image(img, normalize=True).reshape(1, 112, 256, 1))[0]
-                print(resp)
+                resp = model.predict(ml.prepare_image(img, normalize=True, gray=False).reshape(1, 112, 256, 1))[0]
             except Exception as e:
                 print(e)
                 return 100
@@ -206,7 +200,8 @@ class GameServer:
             if resp is not None:
                 not_send = 10
                 while not_send > 0:
-                    joypad_output = Joypad.array_to_joypad(resp, threshold=threshold, missing=missing, bit_array=bit_array)
+                    joypad_output = Joypad.array_to_joypad(resp, threshold=threshold,
+                                                           missing=missing, bit_array=bit_array)
                     if joypad_output == Joypad.empty:
                         joypad_output = Joypad.B
                     try:
@@ -223,7 +218,8 @@ class GameServer:
         Replays a sequence of joypad inputs
         :param joypad_sequence: a list of joypad inputs or a filename with a EmuHawk log file
         :param method: string, how to communicate with EmuHawk, either 'socket', 'http' or 'mmf', None means autodetect
-        :return:
+        :param run_time: int, run time in seconds
+        :return: , last image buffer
         """
 
         if method is None:
@@ -292,18 +288,33 @@ class GameServer:
     def predict_finishline(self, image):
         """
         Predicts if the finish line was passed based on the appearance of the ghost
-        :return:
+        :return: boolean,
         """
-        img_array = np.array(image.crop((0, 0, 250, 100))).reshape(1, -1)
+
+        img_cropped = image.crop((0, 0, 250, 100))
+        img_array = np.array(img_cropped).reshape(1, -1)
         finish_line = bool(self.classifier['lap'].predict(img_array) == [1])
         if finish_line:
+            hash_value = str(imagehash.phash(img_cropped, hash_size=5))
+            print(hash_value)
+
+            if hash_value in self.true_positives and hash_value in self.false_positives:
+                raise ValueError("hash {} was found in both false and true positives".format(hash_value))
+
             direc = os.path.join(os.getcwd(), "classifiers", "round_passed_real_cases")
-            hash_value = hash(str(img_array))
-            image.save("{}/{}.png".format(direc, hash_value))
-            print(hash(str(img_array)))
-            if hash_value in (-3517318627675248826, -1419087826171378535, 2408128862661778840, 3866081608844046149,
-                              -1411748889659361671):
+            if hash_value in self.false_positives:
+                print('false positive')
                 return False
+            elif hash_value in self.true_positives:
+                print('true positive')
+                with open("{}/{}.finished".format(direc, hash_value), 'w') as f:
+                    f.write('true positive')
+                return True
+            else:
+                image.save("{}/{}.png".format(direc, hash_value))
+                finish_line = bool(self.classifier['lap2'].predict(img_array) == [1])
+
+
         return finish_line
 
     def predict_finishline_from_filename(self, filename):
