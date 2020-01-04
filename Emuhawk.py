@@ -73,7 +73,8 @@ class Emuhawk:
             for movie in movies:
                 self.append_movie(movie)
 
-    def find_emuhawk_exe(self):
+    @staticmethod
+    def find_emuhawk_exe():
         """
         Tries to locate EmuHawk.exe
         :return: None if not EmuHawk.exe was found, string with location otherwise
@@ -87,7 +88,7 @@ class Emuhawk:
 
     def movie_to_png(self, movie, output_filename):
         """
-        Converts a movie to a seris of PNG files
+        Converts a movie to a series of PNG files
         :param movie:
         :param output_filename:
         :return:
@@ -207,22 +208,22 @@ class Emuhawk:
         track = track.upper()
 
         if gametype not in ('1P', '2P'):
-            raise ValueError
+            raise ValueError("gametype must be either 1P or 2P. Found: {}".format(gametype))
         if racetype not in ('TIME TRIAL', 'MARIOKART GP'):
-            raise ValueError
+            raise ValueError("racetype must be either 'TIME TRIAL' or 'MARIOKART GP'. Found: {}".format(racetype))
         if cc_class is not None and int(cc_class) not in (50, 100, 150):
-            raise ValueError
+            raise ValueError("cc_class must be either None, 50, 100 or 150. Found: {}".format(cc_class))
 
         valid_players = ('MARIO', 'PRINCESS', 'BOWSER', 'KOOPA', 'LUIGI', 'TOAD', 'DONKEY', 'NO IDEA')
         if player not in valid_players:
-            raise ValueError
+            raise ValueError("Found invalid player: {}".format(player))
         valid_cups = ('MUSHROOM CUP', 'FLOWER CUP', 'STAR CUP')
 
         if cup not in valid_cups:
-            raise ValueError
+            raise ValueError("cup must be either 'MUSHROOM CUP', 'FLOWER CUP' or'STAR CUP'. Found: {}".format(cup))
         valid_tracks = ['MARIO CIRCUIT 1', 'DONUT PLAINS 1', 'GHOST VALLEY 1', 'BOWSER CASTLE 1', 'MARIO CIRCUIT 2', 'CHOCO ISLAND 1', 'GHOST VALLEY 2', 'DONUT PLAINS 2', 'BOWSER CASTLE 2', 'MARIO CIRCUIT 3', 'KOOPA BEACH 1', 'CHOCO ISLAND 2', 'VANILLA LAKE 1', 'BOWSER CASTLE 3', 'MARIO CIRCUI 4']
         if track is not None and track not in valid_tracks:
-            raise ValueError
+            raise ValueError("Found invalid track: {}".format(track))
 
         if filename_movie is None:
             filename_movie = os.path.join(os.getcwd(), 'DefinedState.bk2')
@@ -230,7 +231,6 @@ class Emuhawk:
             filename_state = filename_movie[0:-4] + '.state'
         else:
             filename_state = filename_movie + '.state'
-
 
         # create "Input log.txt" file
         with open('emptyMovie/Input Log.txt', 'r') as f:
@@ -361,6 +361,10 @@ savestate.save("{}")
         return filename_state
 
     def start(self):
+        """
+
+        :return:
+        """
 
         args = [self.emuhawk_exe]
         if self.socket_ip is not None or self.socket_port is not None:
