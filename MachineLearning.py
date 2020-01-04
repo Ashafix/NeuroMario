@@ -1,6 +1,7 @@
 import os
 import numpy as np
 from PIL import Image
+#import imagehash
 import natsort
 import keras.models
 import keras.optimizers
@@ -13,23 +14,29 @@ import sklearn.model_selection
 import sklearn.ensemble
 from MovieFile import MovieFile
 from Joypad import Joypad
-
 try:
     import plotly
 except ImportError:
     print("Plotly was not imported, no statistics visualization available")
+try:
+    import win_unicode_console
+    win_unicode_console.enable()
+except ImportError:
+    print("Keras might throw weird console errors, see https://stackoverflow.com/questions/47356993/oserror-raw-write-returned-invalid-length-when-using-print-in-python")
 
 
 class MachineLearning:
     """
-
+    Class making all machine learning utility functions for Mario Kart available
     """
+
     def __init__(self, images=None, filename_joypad=None):
         self.crop_box_time = (145, 0, 242, 24)
         self.crop_box_lap_classifier = (0, 0, 250, 100)
         #self.zero_values = (1046243, # time 00:00:00 taken from Super Mario Kart (USA).bk2_frame_1509.png
         #                    724995)  # time 00:00:00 taken from Super Mario Kart (USA)-Track1.bk2_frame_1206.png
-        self.zero_values = (3139390632787292812, -1550348942165723893 )
+        self.zero_values = (3139390632787292812, -1550348942165723893)
+        self.black_bar1 = None  # used for gray screenshots from EmuHawk which don't have a alpha channel
         self.black_bar3 = None  # used for screenshots from EmuHawk which don't have a alpha channel
         self.black_bar4 = None  # user for PNG files which have an alpha channel
         self.create_black_bar()
@@ -157,6 +164,9 @@ class MachineLearning:
         Defines the dimensions of a black bar used to mask time in images
         :return: None
         """
+        if self.black_bar1 is None:
+            self.black_bar1 = np.zeros(
+                (self.crop_box_time[3] - self.crop_box_time[1], self.crop_box_time[2] - self.crop_box_time[0]))
         if self.black_bar3 is None:
             self.black_bar3 = np.zeros(
                 (self.crop_box_time[3] - self.crop_box_time[1], self.crop_box_time[2] - self.crop_box_time[0], 3))
@@ -165,12 +175,15 @@ class MachineLearning:
                 (self.crop_box_time[3] - self.crop_box_time[1], self.crop_box_time[2] - self.crop_box_time[0], 4))
             self.black_bar4[..., 3] = 255
 
-    def prepare_image(self, image, black_bar=True, player=1, gray=True, normalize=False):
+
+    def prepare_image(self, image, black_bar=True, player=1, gray=True, normalize=False, pad_to=None):
         """
 
         :param image: either a String with the filename or something which can be read by np.array, e.g. a PIL image
         :param black_bar: boolean, whether the time should be blacked out
-        :param player: int, 1 if the upper half should be used, 2 if the lower half should, 0 if the full image should be used
+        :param player: int, 1 if the upper half should be used,
+                            2 if the lower half should be used,
+                            0 if the full image should be used
         :param gray: boolean, whether to convert to gray scales
         :param normalize: boolean, whether the images are divided by 255 to make them fit in [0, 1]
         :return: numpy array with the adjusted image
@@ -181,9 +194,7 @@ class MachineLearning:
             img = image
         img_arr = np.array(img)
         if len(img_arr.shape) < 1:
-            print('Odd image: {}'.format(img_arr))
-            # TODO: Raise error?!
-            return img_arr
+            raise ValueError('Odd image: {}'.format(img_arr))
 
         if black_bar:
             if img_arr.shape[-1] == 3:
@@ -192,6 +203,9 @@ class MachineLearning:
             elif img_arr.shape[-1] == 4:
                 img_arr[self.crop_box_time[1]:self.crop_box_time[3],
                 self.crop_box_time[0]:self.crop_box_time[2]] = self.black_bar4
+            elif img_arr.shape[-1] == 256 and not gray:
+                img_arr[self.crop_box_time[1]:self.crop_box_time[3],
+                self.crop_box_time[0]:self.crop_box_time[2]] = self.black_bar1
             else:
                 raise ValueError('Color channel must be either 3 or 4, but found {}'.format(img_arr.shape[-1]))
 
@@ -202,22 +216,50 @@ class MachineLearning:
 
         if gray:
             img_arr = np.array(Image.fromarray(img_arr).convert('L'))
+
+        elif img_arr.shape[-1] == 4:
+            img_arr = img_arr[:,:,0:3]
+
         if normalize:
             img_arr = img_arr / 255
+        if pad_to is not None:
+            if len(pad_to) == 2 and not gray:
+                pad_to += (img_arr.shape[-1], )
+            padded = np.zeros(pad_to)
+            max_x = min(img_arr.shape[0], padded.shape[0])
+            max_y = min(img_arr.shape[1], padded.shape[1])
+            padded[:max_x, :max_y] = img_arr[:max_x, :max_y]
+            return padded
+        
         return img_arr
 
-    def input_output(self, black_bar=True, player=1, gray=True, normalize=False, mirror=False, bit_array=False):
+    def input_output(self, black_bar=True, player=1, gray=True, normalize=False, mirror=False, bit_array=False,
+                     pickle_files=None, shuffle=True, drop_unused_columns=True, random_state=42, pad_to=None):
         """
         Converts images and joypad input to numpy arrays
-        :param black_bar: whehter a black bar should put over the time indicator
+        :param black_bar: whether a black bar should put over the time indicator
         :param player: int, whether the upper (1) or lower half (2) of the image should be used
         :param gray: boolean, whether images should be converted to gray scale
         :param normalize: boolean, whether the input array should be normalized to be between 0 and 1
         :param mirror: boolean, whether images where only the left or right button is pressed should be mirrored
         :param bit_array: boolean, whether the output should be translated to a bit array with max one true value,
                           i.e. squash inputs, passed to create_output_array
+        :param pickle_files: tuple/list, where to store the pickled input and output files
+        :param shuffle: boolean, whether the input is shuffled or not
+        :param random_state: int, random_state for sklearn.shuffle
         :return: tuple, input and output array
         """
+
+        if pickle_files is not None:
+            if len(pickle_files) != 2:
+                raise ValueError('pickle_files needs to be a tuple/list with len == 2, got: '.format(pickle_files))
+            if os.path.isfile(pickle_files[0]) and os.path.isfile(pickle_files[1]):
+                print('Using pickled files')
+                with open(pickle_files[0], 'rb') as f:
+                    self.input = np.load(f)
+                with open(pickle_files[1], 'rb') as f:
+                    self.output = np.load(f)
+                return self.input, self.output
 
         if self.image_files is None or self.pressed_keys is None or len(self.image_files) == 0:
             raise ValueError('At least one image and joypad input is required')
@@ -225,22 +267,31 @@ class MachineLearning:
         if len(self.image_files) != len(self.pressed_keys):
             raise ValueError('Number of images does not match length of joypad input')
 
-        first_img = np.array(Image.open(self.image_files[0]).convert('L')).shape
-        input_array = np.zeros((len(self.image_files), int(first_img[0] / 2), first_img[1]),
-                               dtype=np.uint8)
+        if gray:
+            input_shape = np.array(Image.open(self.image_files[0]).convert('L')).shape[0:2]
+        else:
+            input_shape = np.array(Image.open(self.image_files[0])).shape
+            # remove alpha channel
+            if input_shape[-1] == 4:
+                input_shape = input_shape[0:-1] + (3, )
+
+        # take only upper or lower half of the image
+        input_shape = (input_shape[0] // 2, ) + input_shape[1:]
+        
+        if normalize:
+            input_dtype = np.float32
+        else:
+            input_dtype = np.uint8
+        
+        if pad_to is None:
+            input_array = np.zeros((len(self.image_files), ) + input_shape,
+                                   dtype=input_dtype)
+        else:
+            input_array = np.zeros((len(self.image_files), ) + pad_to,
+                                   dtype=input_dtype)
 
         for i, image in enumerate(self.image_files):
-            input_array[i] = self.prepare_image(image, black_bar=black_bar, gray=gray)
-
-        if normalize:
-            array_min = np.min(input_array)
-
-            # TO DO: check if that is that the right to do?
-            if array_min != 0:
-                input_array = input_array - array_min
-            array_max = np.max(input_array)
-            if array_max != 1:
-                input_array = input_array / array_max
+            input_array[i] = self.prepare_image(image, black_bar=black_bar, gray=gray, pad_to=pad_to)
 
         output_array = self.create_output_array(player)
         if mirror:
@@ -248,6 +299,10 @@ class MachineLearning:
         else:
             self.input = input_array
             self.output = output_array[0]
+
+        if drop_unused_columns:
+            idx = np.argwhere(np.all(self.output[..., :] == 0, axis=0))
+            self.output = np.delete(self.output, idx, axis=1)
 
         if bit_array:
             # works only in numpy >v.1.12
@@ -268,6 +323,11 @@ class MachineLearning:
                         break
             self.output = output_bits
 
+        if shuffle:
+            self.input, self.output = sklearn.utils.shuffle(self.input, self.output, random_state=random_state)
+        if pickle_files is not None:
+            np.save(pickle_files[0], self.input)
+            np.save(pickle_files[1], self.output)
         return self.input, self.output
 
     def mirror_images(self, input_array, output_array, player=1):
@@ -502,22 +562,34 @@ class MachineLearning:
             fig.append_trace(g, row=1, col=2)
         return plotly.offline.plot(fig, filename="{}.html".format(modelname))
 
-    def create_lap_classifier(self, random_state=42):
+    def create_lap_classifier(self, random_state=42, filename=None, test_size=0.2, max_depth=2):
         """
         Creates a RandomForest classifier for recognizing when the player passed the finish line
+        :param random_state: int, passed to RandomForestClassifier
+        :param filename: str, if not None, filename will be used for pickling
         :return: sklearn.ensemble.RandomForestClassifier
         """
 
         base_dir = 'number_training/lap/'
-        dir_pos = base_dir + 'positive'
-        dir_neg = base_dir + 'negative'
-        dir_neg2 = 'classifiers/fallingDown_Reverse/positive'
+        dir_pos = [base_dir + 'positive']
+        dir_pos.append(os.path.join(os.getcwd(), 'classifiers/round_passed_real_cases/true_positives'))
+        dir_neg = [base_dir + 'negative']
+        dir_neg.append('classifiers/fallingDown_Reverse/positive')
+        dir_neg.append('classifiers/round_passed_real_cases')
 
-        filenames_pos = [os.path.join(os.getcwd(), dir_pos, f) for f in os.listdir(dir_pos)]
+        filenames_pos = [os.path.join(os.getcwd(), dir_pos[0], f) for f in os.listdir(dir_pos[0]) if
+                         f.endswith((".png", ".jpg"))]
+        for direc in dir_pos[1:]:
+            for f in os.listdir(os.path.join(os.getcwd(), direc)):
+                if f.endswith((".png", ".jpg")):
+                    filenames_pos.append(os.path.join(os.getcwd(), direc, f))
 
-        filenames_neg = [os.path.join(os.getcwd(), dir_neg, f) for f in os.listdir(dir_neg)]
-        for f in os.listdir(dir_neg2):
-            filenames_neg.append(os.path.join(os.getcwd(), dir_neg2, f))
+        filenames_neg = [os.path.join(os.getcwd(), dir_neg[0], f) for f in os.listdir(dir_neg[0]) if
+                         f.endswith((".png", ".jpg"))]
+        for direc in dir_neg[1:]:
+            for f in os.listdir(os.path.join(os.getcwd(), direc)):
+                if f.endswith((".png", ".jpg")):
+                    filenames_neg.append(os.path.join(os.getcwd(), direc, f))
 
         data = np.zeros((len(filenames_neg) + len(filenames_pos), 100, 250))
 
@@ -532,12 +604,18 @@ class MachineLearning:
         target.extend([1 for _ in filenames_pos])
 
         data = data.reshape((len(data), -1))
-        X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(data, target, test_size=0.2,
+        X_train, X_test, y_train, y_test = sklearn.model_selection.train_test_split(data, target,
+                                                                                    test_size=test_size,
                                                                                     random_state=random_state)
 
         print("Fitting the classifier to the training set")
-        random_forest_clf = sklearn.ensemble.RandomForestClassifier(max_depth=2,
+        random_forest_clf = sklearn.ensemble.RandomForestClassifier(max_depth=max_depth,
                                                                     random_state=random_state,
                                                                     verbose=True)
         random_forest_clf.fit(X_train, y_train)
         print(random_forest_clf.score(X_test, y_test))
+
+        if filename is not None and filename.strip() != "":
+            with open(filename, 'wb') as f:
+                pickle.dump(random_forest_clf, f)
+        return random_forest_clf
