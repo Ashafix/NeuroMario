@@ -1,5 +1,7 @@
+import sys
 import http.server
 import socketserver
+
 
 class ServerHTTP:
     
@@ -16,7 +18,6 @@ class ServerHTTP:
     def send(self, message):
         self.httpd.response = message
         self.httpd._handle_request_noblock()
-
 
 
 class httpServerHandler(http.server.BaseHTTPRequestHandler):
@@ -61,6 +62,7 @@ class httpServerHandler(http.server.BaseHTTPRequestHandler):
         self.response = ""
         self.received = payload
         self.do_RESPONSE('ack')
+
     def receive(self):
         print('receive')
         return self.received
@@ -77,15 +79,19 @@ class httpServerHandler(http.server.BaseHTTPRequestHandler):
 
 def resp_func(self, payload):
     if payload.startswith(b'screenshot'):
-        return(b"ack")
+        return b"ack"
     else:
-        return(b"wudder")
+        return b"wudder"
+
 
 if __name__ == "__main__":
     print("hello?!")
     handler = httpServerHandler
     handler.response_function = resp_func
-    PORT = 9876
+    if len(sys.argv) > 1:
+        PORT = int(sys.argv[1])
+    else:
+        PORT = 9876
     httpd = socketserver.TCPServer(("", PORT), handler)
     print(dir(httpd.RequestHandlerClass))
     print("serving at port", PORT)
