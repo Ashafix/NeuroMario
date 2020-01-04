@@ -1,10 +1,12 @@
 import socket
 import time
-#   from NeuroMario import Printer
-import NeuroMario
 import datetime
 from PIL import Image
 import io
+import numpy as np
+import pickle
+from Printer import Printer
+
 
 class ServerSocket:
     def __init__(self, ip=None, port=None):
@@ -21,34 +23,47 @@ class ServerSocket:
         else:
             self.port = port
         self.serversocket = None
+        self.connection = None
+        self.address = None
 
-    def receive(self, image=False, repeats=100):
+    def __str__(self):
+        resp = '{}: ip: {}, port: {}'.format(type(self).__name__, self.ip, self.port)
+        return resp
+
+    def __repr__(self):
+        return self.__str__()
+
+    def receive(self, image=False, repeats=100, packet_size=16384):
 
         repeats = repeats
         buf = b''
         while image or repeats > 0:
             try:
-                buf += self.connection.recv(16384)
-            except:
-                pass
+                buf += self.connection.recv(packet_size)
+            except ConnectionResetError:
+                print('Connection was reset during receive')
+                return buf
             repeats -= 1
             if len(buf) > 0:
-                if buf[-1] == 130:
+                if not image or buf[-1] == 130:
                     break
-
         return buf
 
     def send(self, message, retries=10):
-        success = False
+        """
+        Sends a message to the client
+        :param message: bytes, the message to be send
+        :param retries: int, how many times the server tries to send the message
+        :return: boolean, True is sent succesful, false if not
+        """
         while retries > 0:
             try:
                 self.connection.send(message)
-                retries = 0
-                success = True
+                return True
             except:
                 retries -= 1
 
-        return success
+        return False
 
     def create_connection(self, no_of_connections=10, timeout=10):
         """
@@ -57,13 +72,14 @@ class ServerSocket:
         """	
         self.serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.serversocket.settimeout(timeout)
-        #self.serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             self.serversocket.bind((self.ip, self.port))
         except OSError:
             self.serversocket.close()
             self.serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.serversocket.settimeout(timeout)
+            self.serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.serversocket.bind((self.ip, self.port))
 
         self.serversocket.listen(no_of_connections)
@@ -176,7 +192,7 @@ class ServerSocket:
 
     def speed_listen(self, verbose=False, run_time=600):
 
-        printer = NeuroMario.Printer(verbose=verbose)
+        printer = Printer(verbose=verbose)
         start_time = time.time()
         last_hash = None
         fails = 0
@@ -253,7 +269,7 @@ class ServerSocket:
                     except:
                         # self.connection, self.address = self.serversocket.accept()
                         not_send -= 1
-                if not send > 0:
+                if not_send > 0:
                     try:
                         self.connection.shutdown()
                         self.connection.close()
@@ -268,5 +284,3 @@ class ServerSocket:
                 return False
         printer.log('failed due to timeout')
         return False
-
-
