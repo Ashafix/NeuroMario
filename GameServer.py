@@ -9,6 +9,7 @@ import numpy as np
 import imagehash
 from PIL import Image
 import yaml
+import warnings
 
 from ServerSocket import ServerSocket
 from ServerHTTP import ServerHTTP
@@ -20,7 +21,7 @@ from MovieFile import MovieFile
 try:
     import IPython.display
 except ImportError:
-    print('Interactive IPython mode disabled')
+    warnings.warn('Interactive IPython mode disabled')
 
 
 class GameServer:
@@ -201,7 +202,7 @@ class GameServer:
                 index_finishline_passed = index
                 rounds -= 1
                 if rounds <= 0:
-                    print('breaking because finish line was recognized')
+                    self.printer.log('breaking because finish line was recognized')
                     break
             try:
                 resp = model.predict(ml.prepare_image(img, normalize=True, gray=False).reshape(1, 112, 256, 1))[0]
@@ -221,7 +222,7 @@ class GameServer:
                         server_send(joypad_output)
                         not_send = 0
                     except:
-                        print('failed')
+                        self.printer.log('failed')
                         not_send -= 1
         return self.running_time_to_seconds(self.predict_running_time(img.convert('L')))
 
@@ -282,11 +283,11 @@ class GameServer:
                         not_send = 0
                         failed = False
                     except:
-                        print('failed')
+                        self.printer.log('failed')
                         not_send -= 1
                         failed = (not_send == 0)
                 if failed:
-                    print('giving up')
+                    self.printer.log('giving up')
                     break
 
         server_send(b'screenshot')
@@ -389,7 +390,7 @@ class GameServer:
                 try:
                     img = Image.open(io.BytesIO(buf)).convert('L')
                 except OSError as e:
-                    print(e, index)
+                    self.printer.log(str(e, index))
                     buf += server_receive()
                     img = None
                 # check if round passed
@@ -406,7 +407,7 @@ class GameServer:
                         server_send(resp)
                         not_send = 0
                     except:
-                        print('failed')
+                        self.printer.log('failed')
                         not_send -= 1
                 index += 1
 
@@ -438,7 +439,7 @@ class GameServer:
                 try:
                     IPython.display.display(c)
                 except ImportError:
-                    print('failed to display image, probably Ipython was not imported')
+                    warnings.warn('failed to display image, probably Ipython was not imported')
 
             prediction.append(self.classifier['runningtime'].predict(np.array(c).reshape((1, -1))))
 
@@ -450,7 +451,7 @@ class GameServer:
         :param filename: the filename with the image
         :return:
         """
-        image = Image.oopen(filename).convert('L')
+        image = Image.open(filename).convert('L')
         return self.predict_running_time(image)
 
     @staticmethod
@@ -719,7 +720,7 @@ class GameServer:
         start_time = time.time()
         for folder in os.listdir(os.path.join(self.directory, 'movies_images/')):
             if os.path.isdir(os.path.join(self.directory, 'movies_images/', folder)):
-                if not dir.endswith('.bk2'):
+                if not folder.endswith('.bk2'):
                     continue
                 filename = os.path.join(self.directory, 'movies_images/', folder, folder)
                 if os.path.isfile(filename):
