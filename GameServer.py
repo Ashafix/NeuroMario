@@ -9,13 +9,14 @@ import numpy as np
 import imagehash
 from PIL import Image
 import yaml
+
 from ServerSocket import ServerSocket
 from ServerHTTP import ServerHTTP
-from Printer import Printer
+from Printer import Printer, PrinterDummy
 from Joypad import Joypad
 from MachineLearning import MachineLearning
 from MovieFile import MovieFile
-from utils import timeit
+
 try:
     import IPython.display
 except ImportError:
@@ -31,7 +32,8 @@ class GameServer:
                  http_ip='',
                  http_port=9876,
                  directory=None,
-                 verbose=True):
+                 verbose=True,
+                 printer=None):
         """
 
         :param http_port:
@@ -45,7 +47,7 @@ class GameServer:
             self.directory = directory
         self.init_directories()
         self.hashes = None
-        self.pressed_keys = dict()
+        self.pressed_keys = {}
         self.hash_to_file = None
         self.hashsize = 8
         self.image_method = 'hash'
@@ -53,9 +55,20 @@ class GameServer:
         self.new_index = 0
         self.advanced_listener_initialized = False
         self.finished = False
+        if printer is None:
+            self.printer = Printer(verbose=verbose)
+        elif printer == 'dummy':
+            self.printer = PrinterDummy()
+        else:
+            self.printer = printer
+        if not verbose:
+            printer_ = 'dummy'
+        else:
+            printer_ = None
         if socket_autostart:
             self.server = ServerSocket(ip=socket_ip,
-                                       port=socket_port)
+                                       port=socket_port,
+                                       printer=printer_)
         elif http_autostart:
             self.server = ServerHTTP(ip=http_ip,
                                      port=http_port)
@@ -72,14 +85,14 @@ class GameServer:
         self.advanced_listener_initialized = True
         self.hash_repeat = 0
         self.index = -1
-        self.printer = Printer(verbose=verbose)
+
         self.cloud = False
         self.adv_start_time = time.time()
         self.new_hash = ''
         self.advanced_listener_initialized = False
         self.all_hashes = None
         self.valid_methods = ('socket', 'http', 'mmf')
-        self.classifier = dict()
+        self.classifier = {}
         self.hashes_finished = None
         with open('classifiers/new_lap_rfc.pickle', 'rb') as f:
             self.classifier['lap'] = pickle.load(f)
@@ -90,12 +103,12 @@ class GameServer:
         with open('classifier_runingtime.txt', 'rb') as f:
             self.classifier['runningtime'] = pickle.load(f)
         self.last_hash = ''
-        self.new_hashes = list()
+        self.new_hashes = []
         self.false_positives = None
         self.true_positives = None
         # used for multiprcoessing identification
         self.id = None
-        self.run_times = list()
+        self.run_times = []
         self.__read_config()
 
     def __str__(self):
@@ -106,13 +119,13 @@ class GameServer:
     def __repr__(self):
         return self.__str__()
 
-    def __read_config(self):
+    def __read_config(self, filename='NeuroMarioConfig.yaml'):
         """
         Reads the yaml config file and adds attributes
         :return: None
         """
-        with open("NeuroMarioConfig.yaml", 'r') as f:
-            yaml_dict = yaml.load(f)
+        with open(filename, 'r') as f:
+            yaml_dict = yaml.safe_load(f)
         self.false_positives = yaml_dict.get('finish_line_false_positives')
         self.true_positives = yaml_dict.get('finish_line_true_positives')
         self.hashes_finished = yaml_dict.get('hashes_finished')
@@ -131,20 +144,20 @@ class GameServer:
     def decoder_post(message):
         return message.split('=')[-1]
 
-    def ai(self, method=None, input_args=None, run_time=5*60, max_index=5000, modelname='model', model=None,
+    def ai(self, method=None, run_time=5*60, max_index=5000, modelname='model', model=None,
            threshold=0.4, missing=None, bit_array=False, rounds=1):
         """
 
         :param method:
-        :param input_args:
         :param run_time: int, max time in seconds for which a simulation is performed,
                          afterwards the simulation is terminated
-        :param max_index: int, maximum number of frames to use, afterwarss the simulation is terminated
+        :param max_index: int, maximum number of frames to use, afterwards the simulation is terminated
         :param modelname: string
         :param model:
-        :param threshold:
+        :param threshold: float
         :param missing:
         :param bit_array: boolean, whether the output array is a bit array, see MachineLearning.input_output
+        :param rounds: int, number of rounds to run
         :return:
         """
         if method == 'socket':
@@ -177,10 +190,11 @@ class GameServer:
             try:
                 img = Image.open(io.BytesIO(buf))
                 img = img.convert('L')
+                img.save('{}.png'.format(index))
                 index += 1
 
             except OSError as e:
-                print(e, index)
+                self.printer.log((e, index))
                 buf += server_receive()
 
             # check if finish line was passed
@@ -193,15 +207,18 @@ class GameServer:
             try:
                 resp = model.predict(ml.prepare_image(img, normalize=True, gray=False).reshape(1, 112, 256, 1))[0]
             except Exception as e:
-                print(e)
+                self.printer.log(e)
                 return 100
             if index > max_index:
                 return 100
             if resp is not None:
                 not_send = 10
                 while not_send > 0:
+                    print(resp)
+                    print(np.where(resp == np.max(resp))[0][0])
                     joypad_output = Joypad.array_to_joypad(resp, threshold=threshold,
                                                            missing=missing, bit_array=bit_array)
+                    print(joypad_output)
                     if joypad_output == Joypad.empty:
                         joypad_output = Joypad.B
                     try:
@@ -288,7 +305,8 @@ class GameServer:
     def predict_finishline(self, image):
         """
         Predicts if the finish line was passed based on the appearance of the ghost
-        :return: boolean,
+        :param image: PIL Image
+        :return: bool, True if finish line was passed, False if not
         """
 
         img_cropped = image.crop((0, 0, 250, 100))
@@ -296,17 +314,17 @@ class GameServer:
         finish_line = bool(self.classifier['lap'].predict(img_array) == [1])
         if finish_line:
             hash_value = str(imagehash.phash(img_cropped, hash_size=5))
-            print(hash_value)
+            self.printer.log(hash_value)
 
             if hash_value in self.true_positives and hash_value in self.false_positives:
                 raise ValueError("hash {} was found in both false and true positives".format(hash_value))
 
             direc = os.path.join(os.getcwd(), "classifiers", "round_passed_real_cases")
             if hash_value in self.false_positives:
-                print('false positive')
+                self.printer.log('false positive')
                 return False
             elif hash_value in self.true_positives:
-                print('true positive')
+                self.printer.log('true positive')
                 with open("{}/{}.finished".format(direc, hash_value), 'w') as f:
                     f.write('true positive')
                 return True
@@ -314,14 +332,13 @@ class GameServer:
                 image.save("{}/{}.png".format(direc, hash_value))
                 finish_line = bool(self.classifier['lap2'].predict(img_array) == [1])
 
-
         return finish_line
 
     def predict_finishline_from_filename(self, filename):
         """
         Predicts if the finish line was passed based on the appearance of the ghost
         :param filename: string with the image filename
-        :return:
+        :return: bool, True if finish line was passed, False if not
         """
 
         image = Image.open(filename).convert('L')
@@ -414,16 +431,10 @@ class GameServer:
         :return: string with the joined digits, not converted to a "real" time
         """
         crop_numbers = (176, 7, 242, 21)
-        crop_digits = list()
-        crop_digits.append(0)
-        crop_digits.append(8)
-        crop_digits.append(24)
-        crop_digits.append(32)
-        crop_digits.append(48)
-        crop_digits.append(56)
+        crop_digits = [0, 8, 24, 32, 48, 56]
         main_img = image.crop(crop_numbers)
         index = 0
-        prediction = list()
+        prediction = []
         for i, x in enumerate(crop_digits):
             index += 1
             c = main_img.crop((x, 0, x + 8, 14))
@@ -443,7 +454,7 @@ class GameServer:
         :param filename: the filename with the image
         :return:
         """
-        image = Image.open(filename).convert('L')
+        image = Image.oopen(filename).convert('L')
         return self.predict_running_time(image)
 
     @staticmethod
@@ -514,7 +525,7 @@ class GameServer:
             if str(img_hash) in self.hashes_finished:
 
                 if not finish_line:
-                    self.finish_imgs = list()
+                    self.finish_imgs = []
                     #t = self.time_from_image()
 
             #if finish_line:
@@ -557,7 +568,7 @@ class GameServer:
 
             # slower but deterministic
             if deterministic:
-                possibilities = list()
+                possibilities = []
                 diff = np.sum(np.abs(image_hash - min_hash))
                 for hash_ in self.all_hashes:
                     s = np.sum(np.abs(image_hash - hash_))
@@ -710,19 +721,18 @@ class GameServer:
 
         # get a list of all pressed_keys
         start_time = time.time()
-        for dir in os.listdir(os.path.join(self.directory, 'movies_images/')):
-            if os.path.isdir(os.path.join(self.directory, 'movies_images/', dir)):
+        for folder in os.listdir(os.path.join(self.directory, 'movies_images/')):
+            if os.path.isdir(os.path.join(self.directory, 'movies_images/', folder)):
                 if not dir.endswith('.bk2'):
                     continue
-                filename = os.path.join(self.directory, 'movies_images/', dir, dir)
+                filename = os.path.join(self.directory, 'movies_images/', folder, folder)
                 if os.path.isfile(filename):
                     m = MovieFile(filename=filename)
-                    #self.pressed_keys[os.path.basename(filename)] = self.filter_keys(m.pressed_keys)
                     self.pressed_keys[os.path.basename(filename)] = m.pressed_keys
         self.printer.log('Time for parsing all keys: {}'.format(time.time() - start_time))
 
         # calculate the hash for all images
-        self.all_hashes = list()
+        self.all_hashes = []
         start_time = time.time()
         if not pickled and not overwrite:
             for root, dirs, files in os.walk(os.path.join(self.directory, 'movies_images/')):
