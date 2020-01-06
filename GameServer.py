@@ -190,7 +190,6 @@ class GameServer:
             try:
                 img = Image.open(io.BytesIO(buf))
                 img = img.convert('L')
-                img.save('{}.png'.format(index))
                 index += 1
 
             except OSError as e:
@@ -214,11 +213,8 @@ class GameServer:
             if resp is not None:
                 not_send = 10
                 while not_send > 0:
-                    print(resp)
-                    print(np.where(resp == np.max(resp))[0][0])
                     joypad_output = Joypad.array_to_joypad(resp, threshold=threshold,
                                                            missing=missing, bit_array=bit_array)
-                    print(joypad_output)
                     if joypad_output == Joypad.empty:
                         joypad_output = Joypad.B
                     try:
