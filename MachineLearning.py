@@ -1,7 +1,8 @@
+import sys
 import os
+import warnings
 import numpy as np
 from PIL import Image
-#import imagehash
 import natsort
 import keras.models
 import keras.optimizers
@@ -17,12 +18,12 @@ from Joypad import Joypad
 try:
     import plotly
 except ImportError:
-    print("Plotly was not imported, no statistics visualization available")
+    warnings.warn('Plotly was not imported, no statistics visualization available')
 try:
     import win_unicode_console
     win_unicode_console.enable()
 except ImportError:
-    print("Keras might throw weird console errors, see https://stackoverflow.com/questions/47356993/oserror-raw-write-returned-invalid-length-when-using-print-in-python")
+    warnings.warn('Keras might throw weird console errors, see https://stackoverflow.com/questions/47356993/oserror-raw-write-returned-invalid-length-when-using-print-in-python')
 
 
 class MachineLearning:
@@ -38,7 +39,7 @@ class MachineLearning:
         self.zero_values = (3139390632787292812, -1550348942165723893)
         self.black_bar1 = None  # used for gray screenshots from EmuHawk which don't have a alpha channel
         self.black_bar3 = None  # used for screenshots from EmuHawk which don't have a alpha channel
-        self.black_bar4 = None  # user for PNG files which have an alpha channel
+        self.black_bar4 = None  # used for PNG files which have an alpha channel
         self.create_black_bar()
         self.input = None
         self.output = None
@@ -47,18 +48,18 @@ class MachineLearning:
 
         first_image = None
         if images is None:
-            self.image_files = list()
+            self.image_files = []
         elif isinstance(images, list):
             self.image_files = images
         elif isinstance(images, str):
             if images.endswith('.png'):
                 self.image_files = [images]
             else:
-                self.image_files = list()
+                self.image_files = []
                 first_image = self.add_images_from_dir(images)
 
         if filename_joypad is None:
-            self.pressed_keys = list()
+            self.pressed_keys = []
         elif isinstance(filename_joypad, str):
             if first_image is None:
                 self.pressed_keys = MovieFile.parse_log_file(filename_joypad)
@@ -218,7 +219,7 @@ class MachineLearning:
             img_arr = np.array(Image.fromarray(img_arr).convert('L'))
 
         elif img_arr.shape[-1] == 4:
-            img_arr = img_arr[:,:,0:3]
+            img_arr = img_arr[:, :, 0:3]
 
         if normalize:
             img_arr = img_arr / 255
@@ -256,9 +257,9 @@ class MachineLearning:
             if os.path.isfile(pickle_files[0]) and os.path.isfile(pickle_files[1]):
                 print('Using pickled files')
                 with open(pickle_files[0], 'rb') as f:
-                    self.input = np.load(f)
+                    self.input = np.load(f, allow_pickle=True)
                 with open(pickle_files[1], 'rb') as f:
-                    self.output = np.load(f)
+                    self.output = np.load(f, allow_pickle=True)
                 return self.input, self.output
 
         if self.image_files is None or self.pressed_keys is None or len(self.image_files) == 0:
@@ -428,7 +429,7 @@ class MachineLearning:
         return output_array, self.possibilities
 
     def neural_net(self, batch_size=50, epochs=100, keep_prob=0.8,
-                   modelname='model', loss='mean_squared_error', metrics=None,
+                   modelname='model', loss='mean_squared_error', metrics=['accuracy'],
                    optimizer=keras.optimizers.adam(), activation='softsign'):
         """
         Builds and trains a neural net
@@ -525,13 +526,13 @@ class MachineLearning:
         image = 'movies_images\Super Mario Kart (USA).bk2\Super Mario Kart (USA).bk2_frame_1940.png'
         ml = MachineLearning()
         img = ml.prepare_image(image, normalize=True)
-        print('Start: \n', model.predict(img.reshape(1, 112, 256, 1)))
+        print('Start: \n', model.predict(img.reshape((1, 112, 256, 1))))
         image = 'movies_images\Super Mario Kart (USA).bk2\Super Mario Kart (USA).bk2_frame_2200.png'
         img = ml.prepare_image(image, normalize=True)
-        print('Left: \n', model.predict(img.reshape(1, 112, 256, 1)))
+        print('Left: \n', model.predict(img.reshape((1, 112, 256, 1))))
         image = 'movies_images\Super Mario Kart (USA).bk2\Super Mario Kart (USA).bk2_frame_6890.png'
         img = ml.prepare_image(image, normalize=True)
-        print('Right: \n', model.predict(img.reshape(1, 112, 256, 1)))
+        print('Right: \n', model.predict(img.reshape((1, 112, 256, 1))))
 
         p = model.predict(self.input.reshape(self.input.shape + (1,)))
         for i in self.output.shape[1]:
@@ -543,6 +544,9 @@ class MachineLearning:
         :param history: either a string with the filename of the pickled history dict, or the history dict itself
         :return:
         """
+        if 'plotly' not in sys.modules:
+            warnings.warn('Plotly was not imported, not statistical visualization possible')
+            return
         if isinstance(history, str):
             with open('{}.history'.format(history), 'rb') as f:
                 history = pickle.load(f)
