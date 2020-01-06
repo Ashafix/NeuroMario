@@ -9,7 +9,6 @@ import zipfile
 from MovieFile import MovieFile
 
 
-
 class Emuhawk:
     def __init__(self, emuhawk_exe=None,
                  base_dir=None,
@@ -77,8 +76,9 @@ class Emuhawk:
     def find_emuhawk_exe():
         """
         Tries to locate EmuHawk.exe
-        :return: None if not EmuHawk.exe was found, string with location otherwise
+        :return: None or str, None if EmuHawk.exe was not found, otherwise string with location
         """
+
         possible_locations = ['../BizHawk/output/EmuHawk.exe']
         for possible_location in possible_locations:
             if possible_location.startswith('..'):
@@ -157,8 +157,9 @@ class Emuhawk:
         """
         Appends a movie to the movie list
         :param movie: string, location of the .bk2 file
-        :return:
+        :return: bool, True if the movie was added, False if not (i.e. the movie is alraedy present)
         """
+
         if movie in self.movies:
             return False
         self.movies[movie] = MovieFile(filename=movie)
@@ -167,9 +168,10 @@ class Emuhawk:
     def append_movies(self, movies):
         """
         Appends a list of movies to the movie list
-        :param movies:
-        :return:
+        :param movies: iterable/list of movies
+        :return: None
         """
+
         for movie in movies:
             self.append_movie(movie)
 
@@ -393,11 +395,16 @@ savestate.save("{}")
             args[-1] += self.state
 
         args.append(self.rom_name)
-        print(' '.join(args))
+        self.printer.log(' '.join(args))
         p = subprocess.Popen(args)
         self.pid = p.pid
 
     def stop(self):
+        """
+        Stops EmuHawk
+        :return: bool, True if sucessfully stopped
+        """
+
         if self.pid is None:
             return False
 
@@ -408,4 +415,9 @@ savestate.save("{}")
             return False
 
     def is_running(self):
+        """
+        Checks if EmuHawk is running by looking for its PID
+        :return: bool, True if the EmuHawk is running
+        """
+
         return psutil.pid_exists(self.pid)
