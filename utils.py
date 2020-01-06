@@ -169,3 +169,4 @@ def load_model(modelname):
     with open('{}.json'.format(modelname), 'r') as f:
         model = keras.models.model_from_json(f.read())
     model.load_weights('{}_weights.h5'.format(modelname))
+    return model
