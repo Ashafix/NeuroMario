@@ -5,11 +5,11 @@ from PIL import Image
 import io
 import numpy as np
 import pickle
-from Printer import Printer
+from Printer import Printer, PrinterDummy
 
 
 class ServerSocket:
-    def __init__(self, ip=None, port=None):
+    def __init__(self, ip=None, port=None, printer=None):
 
         # try to get the IP automatically
         if ip is None:
@@ -25,6 +25,13 @@ class ServerSocket:
         self.serversocket = None
         self.connection = None
         self.address = None
+        if printer is None:
+            self.printer = Printer()
+        elif not printer or printer == 'dummy':
+            self.printer = PrinterDummy()
+        else:
+            self.printer = printer
+        self.img = None
 
     def __str__(self):
         resp = '{}: ip: {}, port: {}'.format(type(self).__name__, self.ip, self.port)
@@ -84,7 +91,6 @@ class ServerSocket:
 
         self.serversocket.listen(no_of_connections)
         self.connection, self.address = self.serversocket.accept()
-        #self.connection.settimeout(1)
 
     def listen(self, run_time=600):
 
