@@ -286,7 +286,7 @@ def play(args=None, state=None, modelname=None):
          model=model,
          missing=missing,
          threshold=args.play_threshold,
-         bit_array=False)
+         bit_array=args.bit_array)
 
 
 def test_model(args):
