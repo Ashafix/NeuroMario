@@ -10,15 +10,26 @@ import sklearn
 class time_from_image:
     def __init__(self):
 
+        self.classifier = None
+        self.total_samples = 0
+
+        self.all_images = None
+        self.all_digits = None
+
+        self.data_s = None
+        self.digits_s = None
+
+        self.digits = []
+        self.digit_hashes = []
         self.random_state = 42
         self.training_size = 0.8
         
-        self.directories = list()
-        self.index_ranges = list()
-        self.numbers = list()
+        self.directories = []
+        self.index_ranges = []
+        self.numbers = []
         self.index_ranges.append((6740, 10**6))
-        self.directories.append('D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies_images/Super Mario Kart (USA)-3.bk2/')
-        self.numbers.append(list())
+        self.directories.append('movies_images/Super Mario Kart (USA)-3.bk2/')
+        self.numbers.append([])
         self.numbers[-1].append('01741')
         self.numbers[-1].append('01534')
         self.numbers[-1].append('01575')
@@ -27,8 +38,8 @@ class time_from_image:
         self.numbers[-1].append('12437')
 
         self.index_ranges.append((6559, 10**6))
-        self.directories.append('D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies_images/Super Mario Kart (USA)-5.bk2/')
-        self.numbers.append(list())
+        self.directories.append('movies_images/Super Mario Kart (USA)-5.bk2/')
+        self.numbers.append([])
         self.numbers[-1].append('01809')
         self.numbers[-1].append('01660')
         self.numbers[-1].append('01547')
@@ -36,10 +47,9 @@ class time_from_image:
         self.numbers[-1].append('01587')
         self.numbers[-1].append('12067')
 
-
         self.index_ranges.append((5601, 10**6))
-        self.directories.append('D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies_images/Super Mario Kart (USA)-6.bk2/')
-        self.numbers.append(list())
+        self.directories.append('movies_images/Super Mario Kart (USA)-6.bk2/')
+        self.numbers.append([])
         self.numbers[-1].append('01653')
         self.numbers[-1].append('01477')
         self.numbers[-1].append('01654')
@@ -48,8 +58,8 @@ class time_from_image:
         self.numbers[-1].append('11782')
 
         self.index_ranges.append((5788, 10**6))
-        self.directories.append('D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies_images/Super Mario Kart (USA)-7.bk2/')
-        self.numbers.append(list())
+        self.directories.append('movies_images/Super Mario Kart (USA)-7.bk2/')
+        self.numbers.append([])
         self.numbers[-1].append('01640')
         self.numbers[-1].append('01480')
         self.numbers[-1].append('02072')
@@ -58,8 +68,8 @@ class time_from_image:
         self.numbers[-1].append('12124')
 
         self.index_ranges.append((5746, 10**6))
-        self.directories.append('D:/Users/Ashafix/Documents/GitHub/NeuroMario/movies_images/Super Mario Kart (USA)-8.bk2/')
-        self.numbers.append(list())
+        self.directories.append('movies_images/Super Mario Kart (USA)-8.bk2/')
+        self.numbers.append([])
         self.numbers[-1].append('01661')
         self.numbers[-1].append('01634')
         self.numbers[-1].append('01455')
@@ -67,9 +77,9 @@ class time_from_image:
         self.numbers[-1].append('01488')
         self.numbers[-1].append('11996')
 
-        self.filenames = list()
+        self.filenames = []
         
-        self.dig_pos = list()
+        self.dig_pos = []
         for i in range(5):
             self.dig_pos.append((0, i * 9, 8, i * 9 + 8))
             self.dig_pos.append((16, i * 9, 24, i * 9 + 8))
@@ -86,7 +96,7 @@ class time_from_image:
         
         
         for movie, direc in enumerate(self.directories):
-            self.filenames.append(list())
+            self.filenames.append([])
     
             for a, b, c in os.walk(direc):
         
@@ -96,18 +106,19 @@ class time_from_image:
                         index = int(filename.split('_frame_')[1].split('.')[0])
                         if index >= (self.index_ranges[movie][0]) and index < self.index_ranges[movie][1]:
                             self.filenames[-1].append(os.path.join(direc, filename))
+    
     def image_arrays_from_file(self, filename, movie, numbers):
         x = 112
         y = 37
         width = 60
         height = 60
         img = Image.open(filename).crop((x, y, x + width, y + height)).convert('LA')
-        digits = list()
-        digit_hashes = list()
-        sorted_images = list()
+        digits = []
+        digit_hashes = []
+        sorted_images = []
         for i in range(10):
-            digits.append(list())
-            digit_hashes.append(list())
+            digits.append([])
+            digit_hashes.append([])
             
         for i, pos in enumerate(self.dig_pos):
             digit_array = np.array(img.crop(pos))[:,:,0]
@@ -128,19 +139,16 @@ class time_from_image:
         
     def filenames_to_digits(self, filenames, numbers):
 
-        self.digits = list()
-        self.digit_hashes = list()
+        self.digits = []
+        self.digit_hashes = []
         
         for i in range(10):
-            self.digits.append(list())
-            self.digit_hashes.append(list())
+            self.digits.append([])
+            self.digit_hashes.append([])
         
-        
-        a = False
         for movie, filename in enumerate(filenames):
             for file in filename:
                 self.image_arrays_from_file(file, movie, numbers)
-        #return self.digits
     
     def predict_time_from_filenames(self, filenames):
         if not self.classifier:
@@ -150,7 +158,7 @@ class time_from_image:
         
         solution = collections.defaultdict(int)
         for filename in filenames:
-            x, xx, xxx = aa.image_arrays_from_file(filename, i, aa.numbers)
+            x, xx, xxx = self.image_arrays_from_file(filename, i, self.numbers)
             solution[''.join([str(s)[0] for s in list(self.classifier.predict(np.array(xxx[-5:]).reshape(5, -1)))])] += 1
         
         return solution
@@ -164,19 +172,20 @@ class time_from_image:
         t += int(timestring[3]) * 0.1
         t += int(timestring[4]) * 0.01
         return t
+
     def test_classifier(self):
         for i, filename in enumerate(self.filenames):
-            prediction = aa.predict_time_from_filenames(filename)
+            prediction = self.predict_time_from_filenames(filename)
             best_score = max([int(i) for i in list(prediction)])
-            if best_score != int(aa.numbers[i][5]):
+            if best_score != int(self.numbers[i][5]):
                 print('failed')
-                print('Expected: {}\nGot:{}'.format(aa.numbers[i][5], prediction))
+                print('Expected: {}\nGot:{}'.format(self.numbers[i][5], prediction))
                 print(i)
                 return False
         return True
+
     def classify(self):
-        
-        
+
         self.classifier = sklearn.svm.SVC(gamma=0.001)
         self.total_samples = 0
         for i in range(10):
@@ -192,7 +201,3 @@ class time_from_image:
                 index += 1
         self.data_s, self.digits_s = sklearn.utils.shuffle(self.all_images.reshape(self.total_samples, -1), self.all_digits, random_state=self.random_state)
         self.classifier.fit(self.data_s[0:int(self.total_samples * self.training_size)], np.ravel(self.digits_s[0:int(self.total_samples * self.training_size)]))
-
-        
-        
-
