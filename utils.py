@@ -7,6 +7,7 @@ from PIL import Image
 import numpy as np
 import yaml
 import time
+import keras.models
 
 
 def get_false_positives():
@@ -162,3 +163,9 @@ def timeit(method):
         print('{}  {} ms'.format(method.__name__, (t1 - t0) * 1000))
         return result
     return timed
+
+
+def load_model(modelname):
+    with open('{}.json'.format(modelname), 'r') as f:
+        model = keras.models.model_from_json(f.read())
+    model.load_weights('{}_weights.h5'.format(modelname))
