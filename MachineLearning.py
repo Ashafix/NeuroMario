@@ -176,7 +176,6 @@ class MachineLearning:
                 (self.crop_box_time[3] - self.crop_box_time[1], self.crop_box_time[2] - self.crop_box_time[0], 4))
             self.black_bar4[..., 3] = 255
 
-
     def prepare_image(self, image, black_bar=True, player=1, gray=True, normalize=False, pad_to=None):
         """
 
@@ -292,7 +291,8 @@ class MachineLearning:
                                    dtype=input_dtype)
 
         for i, image in enumerate(self.image_files):
-            input_array[i] = self.prepare_image(image, black_bar=black_bar, gray=gray, pad_to=pad_to)
+            input_array[i] = self.prepare_image(image, black_bar=black_bar, gray=gray,
+                                                pad_to=pad_to, normalize=normalize)
 
         output_array = self.create_output_array(player)
         if mirror:
