@@ -103,9 +103,7 @@ def workflow_learn(args, index=-2, seed=42, modelname='model_binary_crossentropy
     :param modelname: string, the model to load, .json/.weights.h5 is appended automatically
     :return:
     """
-    with open('{}.json'.format(modelname), 'r') as f:
-        model = keras.models.model_from_json(f.read())
-    model.load_weights('{}_weights.h5'.format(modelname))
+    model = utils.load_model(modelname)
     learn = Learn(model, index)
     learn.state = args.state
     bounds = list()
@@ -137,7 +135,7 @@ def get_missing_values(model):
     return missing
 
 
-def find_best_score():
+def find_best_score(_):
     """
 
     :return:
@@ -173,11 +171,9 @@ def replay(args, best=True, modelname='model_binary_crossentropy_keras.optimizer
     :param modelname: string, the name of the model, .json/_weights.h5 will be automatically attached
     :return: None
     """
-    
-    with open('{}.json'.format(modelname), 'r') as f:
-        model = keras.models.model_from_json(f.read())
-    model.load_weights('{}_weights.h5'.format(modelname))
-    
+
+    model = utils.load_model(modelname)
+
     if best:
         best_score, best_weight = find_best_score()
         index = int(best_weight.split('weights')[-1])
@@ -201,7 +197,7 @@ def replay(args, best=True, modelname='model_binary_crossentropy_keras.optimizer
                  missing=missing,
                  threshold=args.play_threshold)
     if best:
-        assert(score == best_score)
+        assert score == best_score, 'Best score {} did not match achieved score'.format(best_score, score)
 
 
 def replay_best(args):
@@ -237,7 +233,8 @@ def build_model(args):
         print(ml.image_files[-1])
 
     print('building input and output')
-    ml.input_output(normalize=args.normalize, mirror=args.mirror, bit_array=args.bit_array, pickle_files=args.pickle_files)
+    ml.input_output(normalize=args.normalize, mirror=args.mirror,
+                    bit_array=args.bit_array, pickle_files=args.pickle_files)
     print('dropping unused output columns')
     new_output, dropped = ml.remove_empty_columns(ml.output, args.drop_threshold)
     print(dropped)
@@ -248,20 +245,27 @@ def build_model(args):
     else:
         modelname = 'default'
     ml.neural_net(modelname=modelname, activation=args.activation, epochs=args.epochs, loss=args.loss)
+    print('created model: {}'.format(modelname))
     return ml
 
 
-def play(state, modelname):
+def play(args=None, state=None, modelname=None):
     """
     Plays a specific state with a model
+    :param args: parsed arguments from argparse, will overwrite state and modelname
     :param state: string, the name of the state which is loaded in Emuhawk
     :param modelname: string, the name of the model is loaded (without .json or .weights)
     :return: None
     """
-    with open('{}.json'.format(modelname), 'r') as f:
-        model = keras.models.model_from_json(f.read())
 
-    model.load_weights('{}_weights.h5'.format(modelname))
+    if args is not None:
+        state = args.state
+        modelname = args.model
+    if state is None or modelname is None:
+        raise ValueError('state and modelname (filename of existing model) is required')
+
+    model = utils.load_model(modelname)
+
     g = GameServer(socket_autostart=True,
                    socket_ip=socket.gethostbyname(socket.gethostname()),
                    socket_port=9000 + os.getpid() % 1000)
@@ -278,11 +282,11 @@ def play(state, modelname):
     g.server.create_connection(timeout=60)
     missing = get_missing_values(model)
     print('created connection')
-    x = g.ai(method='socket',
-             model=model,
-             missing=missing,
-             threshold=args.play_threshold,
-             bit_array=True)
+    g.ai(method='socket',
+         model=model,
+         missing=missing,
+         threshold=args.play_threshold,
+         bit_array=False)
 
 
 def test_model(args):
@@ -292,10 +296,7 @@ def test_model(args):
     :return: None
     """
     modelname = args.model
-    with open('{}.json'.format(modelname), 'r') as f:
-        model = keras.models.model_from_json(f.read())
-
-    model.load_weights('{}_weights.h5'.format(modelname))
+    model = utils.load_model(modelname)
     ml = MachineLearning()
     ml.model = model
     ml.test_neural_net()
@@ -308,26 +309,27 @@ def parse_args(sys_args):
     :return: None
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=('learn', 'replay_best', 'replay_initial', 'find_best_score', 'build_model', 'play', 'test', 'clean', 'create_state'))
+    parser.add_argument("command", choices=('learn', 'replay_best', 'replay_initial', 'find_best_score', 'build_model',
+                                            'play', 'test', 'clean', 'create_state'))
     parser.add_argument("--model")
     parser.add_argument("--state", default='states/GhostValley_2.State', type=str)
-    parser.add_argument("--activation", default="sigmoid")
-    parser.add_argument("--epochs", default=100, type=int)
-    parser.add_argument("--loss", default="categorical_crossentropy")
+    parser.add_argument("--activation", default='sigmoid', type=str)
+    parser.add_argument("--epochs", default=10, type=int)
+    parser.add_argument("--loss", default='categorical_crossentropy', type=str)
     parser.add_argument("--drop_threshold", default=0.01, type=float)
     parser.add_argument("--play_threshold", default=0.5, type=float)
     parser.add_argument("--normalize", default=True, type=lambda s: s.lower() in ['true', 't', 'yes', '1'])
     parser.add_argument("--mirror", default=True, type=lambda s: s.lower() in ['true', 't', 'yes', '1'])
     parser.add_argument("--bit_array", default=True, type=lambda s: s.lower() in ['true', 't', 'yes', '1'])
-    parser.add_argument("--directory", default="weights_states\MarioCircuitI.State")
-    parser.add_argument("--suffix", default=".weights-2")
-    parser.add_argument("--gametype", default="1P", choices=['1P', '2P'])
-    parser.add_argument("--racetype", default="Time Trial")
-    parser.add_argument("--player", default="Mario")
+    parser.add_argument("--directory", default='weights_states/MarioCircuitI.State', type=str)
+    parser.add_argument("--suffix", default='.weights-2', type=str)
+    parser.add_argument("--gametype", default='1P', choices=['1P', '2P'])
+    parser.add_argument("--racetype", default='Time Trial', type=str)
+    parser.add_argument("--player", default='Mario', type=str)
     parser.add_argument("--cc_class", default=None, choices=[None, 50, 100, 150])
-    parser.add_argument("--cup", default="MUSHROOM CUP")
-    parser.add_argument("--track", default="GHOST VALLEY 1")
-    parser.add_argument("--filename")
+    parser.add_argument("--cup", default='MUSHROOM CUP', type=str)
+    parser.add_argument("--track", default='GHOST VALLEY 1', type=str)
+    parser.add_argument("--filename", type=str)
     parser.add_argument("--pickle_files", default=None, nargs=2)
     args = parser.parse_args(sys_args)
     return args
@@ -379,27 +381,23 @@ def main(args):
     :return: None
     """
 
+    command_to_function = {
+        'replay_best': replay_best,
+        'replay_initial': replay_initial,
+        'find_best_score': find_best_score,
+        'build_model': build_model,
+        'play': play,
+        'create_state': create_state
+    }
+
     if args.command == 'learn':
         if args.model is not None:
             workflow_learn(args, modelname=args.model)
         else:
             workflow_learn(args)
-    elif args.command == 'replay_best':
-        replay_best(args)
-    elif args.command == 'replay_initial':
-        replay_initial(args)
-    elif args.command == 'find_best_score':
-        find_best_score()
-    elif args.command == 'build_model':
-        return build_model(args)
-    elif args.command == 'play':
-        play(args.state, args.model)
-    elif args.command == 'test':
-        test_model(args)
-    elif args.command == 'clean':
-        clean_up(args)
-    elif args.command == 'create_state':
-        create_state(args)
+    else:
+        function = command_to_function[args.command]
+        return function(args)
 
 
 if __name__ == '__main__':
