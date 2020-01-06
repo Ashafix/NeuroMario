@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class Joypad:
     """
     LogKey:#Reset|Power|#P1 Up|P1 Down|P1 Left|P1 Right|P1 Select|P1 Start|P1 Y|P1 B|P1 X|P1 A|P1 L|P1 R|#P2 Up|P2 Down|P2 Left|P2 Right|P2 Select|P2 Start|P2 Y|P2 B|P2 X|P2 A|P2 L|P2 R|
@@ -24,7 +25,6 @@ class Joypad:
     one_player_empty = b'............'
     one_player_all = b'UDLRsSYBXAlr'
 
-
     def __init__(self):
         return
 
@@ -32,7 +32,6 @@ class Joypad:
         for att in dir(self):
             if not att.startswith('__') and not callable(getattr(self, att)):
                 print(getattr(self, att))
-
 
     @staticmethod
     def joypad_to_array(joypad):
@@ -56,24 +55,16 @@ class Joypad:
         """
 
         if bit_array:
-            if array.shape[0] == 4:
-                index = np.where(array == np.max(array))[0][0]
-                if index == 0:
-                    return Joypad.default
-                if index == 1:
-                    return Joypad.B
-                if index == 2:
-                    return Joypad.merge(Joypad.B, Joypad.right)
-                if index == 3:
-                    return Joypad.merge(Joypad.B, Joypad.left)
-            elif array.shape[0] == 3:
-                index = np.where(array == np.max(array))[0][0]
-                if index == 0:
-                    return Joypad.B
-                if index == 1:
-                    return Joypad.merge(Joypad.B, Joypad.right)
-                if index == 2:
-                    return Joypad.merge(Joypad.B, Joypad.left)
+            index_to_joypad = [Joypad.default,
+                               Joypad.B,
+                               Joypad.merge(Joypad.B, Joypad.right),
+                               Joypad.merge(Joypad.B, Joypad.left)
+                               ]
+            offset = 4 - array.shape[0]
+            if offset not in (0, 1):
+                raise ValueError('array dimensions must be either [n][3] or [n][4]')
+            index = np.where(array == np.max(array))[0][0]
+            return index_to_joypad[index + offset]
 
         if player > 0:
             offset = 4 + (player - 1) * 13
@@ -101,8 +92,6 @@ class Joypad:
                     return_bytes[i] = Joypad.all_but[i]
                 index += 1
         return bytes(return_bytes)
-
-
 
     @staticmethod
     def flip_input(joypad, down_up=True, left_right=True):
@@ -230,10 +219,8 @@ class Joypad:
         new_return_buttons = b''
         for i, k in enumerate(key1):
             if k != b'.'[0]:
-                print(1)
                 new_return_buttons = new_return_buttons + key1[i:i + 1]
             elif key2[i] != b'.'[0]:
-                print(2)
                 new_return_buttons = new_return_buttons + key2[i:i + 1]
             else:
                 new_return_buttons += b'.'
