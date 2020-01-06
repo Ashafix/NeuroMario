@@ -33,3 +33,12 @@ References:
 1: Bojarski et al.: End to End Learning for Self-Driving Cars, [https://arxiv.org/abs/1604.07316](arXiv:1604.07316)<br />
 see also: https://github.com/kevinhughes27/TensorKart and https://github.com/0bserver07/Nvidia-Autopilot-Keras<br />
 2: https://docs.scipy.org/doc/scipy-0.15.1/reference/generated/scipy.optimize.differential_evolution.html
+
+
+## Usage
+Start ``python3 NeuroMario.py`` to get a list of command line options
+
+e.g.
+
+``python3 NeuroMario.py play --model model_normalize_nomirror_bitarray_epochs100_tanh_categorical_crossentropy_MarioCircuitIGhostValleyI``
+
