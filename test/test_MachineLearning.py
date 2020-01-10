@@ -76,6 +76,26 @@ class TestMachineLearning(unittest.TestCase):
         with self.assertRaises(IndexError):
             ML.remove_empty_columns(array)
 
+    def test_create_black_bar(self):
+        ml = MachineLearning()
+
+        attrs = ('black_bar1',
+                 'black_bar3',
+                 'black_bar4')
+
+        for attr in attrs:
+            self.assertIsNotNone(ml.__getattribute__(attr))
+            ml.__setattr__(attr, None)
+
+        for attr in attrs:
+            self.assertIsNone(ml.__getattribute__(attr))
+
+        ml._create_black_bar()
+        for attr in attrs:
+            self.assertIsNotNone(ml.__getattribute__(attr))
+
+
+
 
 if __name__ == '__main__':
     unittest.main()

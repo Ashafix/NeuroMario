@@ -307,7 +307,7 @@ class NeuroMarioTestCases(unittest.TestCase):
             0: 18.40,
             1: 18.57,
             2: 18.60,
-            3: 19.00
+            3: 18.40
         }
 
         # use number of available cores
