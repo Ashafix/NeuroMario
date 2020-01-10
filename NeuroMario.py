@@ -4,7 +4,6 @@ import argparse
 import scipy.optimize as optimize
 import pickle
 import socket
-import keras
 import hashlib
 import pathlib
 from Emuhawk import Emuhawk
@@ -14,13 +13,14 @@ import utils
 
 
 class Learn:
-    def __init__(self, model, weights_index):
-        self.best_score = 21.19
+    def __init__(self, model, weights_index, args, best_score=21.19):
+        self.best_score = best_score
         self.model = model
         self.initial_weights = model.get_weights()
         self.weights_index = weights_index
         self.initial_shape = self.initial_weights[weights_index].shape
         self.state = None
+        self.args = args
 
     def learn(self, weights, keep_hash=True):
         """
@@ -60,7 +60,7 @@ class Learn:
                     socket_port=g.server.port,
                     lua_script=os.path.join(os.getcwd(), 'lua/listen_socket_screenshot.lua'))
         if self.state is None:
-            e.state = os.path.join(os.getcwd(), 'states/GhostValley.State')
+            e.state = os.path.join(os.getcwd(), 'states/GhostValley_2.State')
         else:
             e.state = self.state
         e.start()
@@ -69,8 +69,8 @@ class Learn:
         x = g.ai(method='socket',
                  model=self.model,
                  missing=missing,
-                 threshold=args.play_threshold,
-                 bit_array=True)
+                 threshold=self.args.play_threshold,
+                 bit_array=self.args.bit_array)
 
         if keep_hash:
             with open('{}/{}.txt'.format(folder, hash_digest), 'w') as f:
@@ -82,8 +82,8 @@ class Learn:
             xx = g.ai(method='socket',
                       model=self.model,
                       missing=missing,
-                      threshold=args.play_threshold,
-                      bit_array=True)
+                      threshold=self.args.play_threshold,
+                      bit_array=self.args.bit_array)
             if x != xx:
                 print('something went wrong, {} vs {}'.format(x, xx))
             if xx != self.best_score and xx != 100:
@@ -97,16 +97,19 @@ class Learn:
 def workflow_learn(args, index=-2, seed=42, modelname='model_binary_crossentropy_keras.optimizers.Adam_sigmoid'):
     """
 
-    :param args: argparse object
+    :param args: argparse object, overwerites modelname
     :param index: which layer of the network is optimized
     :param seed: int, passed as seed to differential_evolution
     :param modelname: string, the model to load, .json/.weights.h5 is appended automatically
     :return:
     """
+
+    if args.model is not None:
+        modelname = args.model
     model = utils.load_model(modelname)
-    learn = Learn(model, index)
+    learn = Learn(model, index, args)
     learn.state = args.state
-    bounds = list()
+    bounds = []
     weights = model.get_weights()[index].flatten()
     for i in range(weights.size):
         _min = -abs(weights[i])
@@ -282,11 +285,11 @@ def play(args=None, state=None, modelname=None):
     g.server.create_connection(timeout=60)
     missing = get_missing_values(model)
     print('created connection')
-    g.ai(method='socket',
-         model=model,
-         missing=missing,
-         threshold=args.play_threshold,
-         bit_array=args.bit_array)
+    return g.ai(method='socket',
+                model=model,
+                missing=missing,
+                threshold=args.play_threshold,
+                bit_array=args.bit_array)
 
 
 def test_model(args):
@@ -382,6 +385,7 @@ def main(args):
     """
 
     command_to_function = {
+        'learn': workflow_learn,
         'replay_best': replay_best,
         'replay_initial': replay_initial,
         'find_best_score': find_best_score,
@@ -390,14 +394,8 @@ def main(args):
         'create_state': create_state
     }
 
-    if args.command == 'learn':
-        if args.model is not None:
-            workflow_learn(args, modelname=args.model)
-        else:
-            workflow_learn(args)
-    else:
-        function = command_to_function[args.command]
-        return function(args)
+    function = command_to_function[args.command]
+    return function(args)
 
 
 if __name__ == '__main__':
