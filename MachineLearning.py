@@ -40,7 +40,7 @@ class MachineLearning:
         self.black_bar1 = None  # used for gray screenshots from EmuHawk which don't have a alpha channel
         self.black_bar3 = None  # used for screenshots from EmuHawk which don't have a alpha channel
         self.black_bar4 = None  # used for PNG files which have an alpha channel
-        self.create_black_bar()
+        self._create_black_bar()
         self.input = None
         self.output = None
         self.possibilities = set()
@@ -77,7 +77,7 @@ class MachineLearning:
 
         image_endings = ('.png',)
         files = os.listdir(directory)
-        accepted_files = list()
+        accepted_files = []
         for f in files:
             if f.endswith(image_endings):
                 accepted_files.append(os.path.join(directory, f))
@@ -111,7 +111,7 @@ class MachineLearning:
 
         image_endings = ('.png',)
         files = os.listdir(directory)
-        accepted_files = list()
+        accepted_files = []
         for f in files:
             if f.endswith(image_endings):
                 accepted_files.append(os.path.join(directory, f))
@@ -160,7 +160,7 @@ class MachineLearning:
         else:
             return files.index(best_file) - 128, best_file
 
-    def create_black_bar(self):
+    def _create_black_bar(self):
         """
         Defines the dimensions of a black bar used to mask time in images
         :return: None
@@ -246,6 +246,7 @@ class MachineLearning:
                           i.e. squash inputs, passed to create_output_array
         :param pickle_files: tuple/list, where to store the pickled input and output files
         :param shuffle: boolean, whether the input is shuffled or not
+        :param drop_unused_columns: bool, if True all columns which are always 0 are dropped
         :param random_state: int, random_state for sklearn.shuffle
         :return: tuple, input and output array
         """
@@ -347,7 +348,7 @@ class MachineLearning:
         left = Joypad.left[start:start + 12].replace(b'.', b'')
         start = (player - 1) * 13 + 4
 
-        to_be_mirrored = list()
+        to_be_mirrored = []
         for i, pressed in enumerate(self.pressed_keys):
             p = pressed[start:start + 12]
             if up in p and down not in p:
@@ -502,9 +503,9 @@ class MachineLearning:
         if len(array.shape) != 2:
             raise IndexError('Array shape needs to be (samples, output)')
 
-        to_be_dropped = list()
+        to_be_dropped = []
         for col in range(array.shape[1]):
-            if array[:, col].sum() / array.shape[0] < threshold:
+            if (array[:, col].sum() / array.shape[0]) < threshold:
                 to_be_dropped.append(col)
 
         return np.delete(array, to_be_dropped, 1), to_be_dropped
@@ -551,8 +552,8 @@ class MachineLearning:
             with open('{}.history'.format(history), 'rb') as f:
                 history = pickle.load(f)
 
-        graphs_acc = list()
-        graphs_loss = list()
+        graphs_acc = []
+        graphs_loss = []
         for k in history.keys():
             if 'loss' in k:
                 graphs_loss.append(plotly.graph_objs.Scatter(y=history[k], name=k))
