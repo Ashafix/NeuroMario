@@ -22,7 +22,8 @@ class Emuhawk:
                  http_port=None,
                  url_get=None,
                  url_post=None,
-                 lua_script=None):
+                 lua_script=None,
+                 config_file=None):
 
         if emuhawk_exe is not None:
             self.emuhawk_exe = emuhawk_exe
@@ -71,6 +72,8 @@ class Emuhawk:
         if movies is not None:
             for movie in movies:
                 self.append_movie(movie)
+
+        self.config_file = config_file
 
     @staticmethod
     def find_emuhawk_exe():
@@ -384,15 +387,14 @@ savestate.save("{}")
             args[-1] += self.url_get
             args.append('--url_post=')
             args[-1] += self.url_post
-        if self.lua_script is not None:
-            args.append('--lua=')
-            args[-1] += self.lua_script
-        if self.movie is not None:
-            args.append('--movie=')
-            args[-1] += self.movie
-        if self.state is not None:
-            args.append('--load-state=')
-            args[-1] += self.state
+
+        arg_to_attr = {'--lua={}': self.lua_script,
+                       '--movie={}': self.movie,
+                       '--load-state={}': self.state,
+                       '--config={}': self.config_file}
+        for arg, attr in arg_to_attr.items():
+            if attr is not None:
+                args.append(arg.format(attr))
 
         args.append(self.rom_name)
         self.printer.log(' '.join(args))
