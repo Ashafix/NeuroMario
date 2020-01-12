@@ -58,7 +58,8 @@ class Learn:
                        socket_port=9000 + os.getpid() % 1000)
         e = Emuhawk(socket_ip=g.server.ip,
                     socket_port=g.server.port,
-                    lua_script=os.path.join(os.getcwd(), 'lua/listen_socket_screenshot.lua'))
+                    lua_script=os.path.join(os.getcwd(), 'lua/listen_socket_screenshot.lua'),
+                    config_file=self.args.bizhawk_config)
         if self.state is None:
             e.state = os.path.join(os.getcwd(), 'states/GhostValley_2.State')
         else:
@@ -118,7 +119,9 @@ def workflow_learn(args, index=-2, seed=42, modelname='model_binary_crossentropy
             _max = 0.1
             _min = -0.1
         bounds.append((_min, _max))
-    optimize.differential_evolution(learn.learn, bounds, seed=seed)
+    if args.workers == -1:
+        args.workers = os.cpu_count()
+    optimize.differential_evolution(learn.learn, bounds, seed=seed, workers=args.workers)
 
 
 def get_missing_values(model):
@@ -334,6 +337,8 @@ def parse_args(sys_args):
     parser.add_argument("--track", default='GHOST VALLEY 1', type=str)
     parser.add_argument("--filename", type=str)
     parser.add_argument("--pickle_files", default=None, nargs=2)
+    parser.add_argument("--workers", default=1, type=str)
+    parser.add_argument("--bizhawk_config", default='', type=str)
     args = parser.parse_args(sys_args)
     return args
 
