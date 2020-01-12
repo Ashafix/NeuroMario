@@ -453,25 +453,7 @@ class MachineLearning:
                                                 str(optimizer).split(' ')[0][1:],
                                                 activation)
 
-        model = keras.models.Sequential()
-        model.add(
-            Conv2D(24, kernel_size=(5, 5), strides=(2, 2), activation='relu', input_shape=self.input.shape[1:] + (1,)))
-        model.add(Conv2D(36, kernel_size=(5, 5), strides=(2, 2), activation='relu'))
-        model.add(Conv2D(48, kernel_size=(5, 5), strides=(2, 2), activation='relu'))
-        model.add(Conv2D(64, kernel_size=(3, 3), activation='relu'))
-        model.add(Conv2D(64, kernel_size=(3, 3), activation='relu'))
-        model.add(Flatten())
-        model.add(Dense(1164, activation='relu'))
-        drop_out = 1 - keep_prob
-        model.add(Dropout(drop_out))
-        model.add(Dense(100, activation='relu'))
-        model.add(Dropout(drop_out))
-        model.add(Dense(50, activation='relu'))
-        model.add(Dropout(drop_out))
-        model.add(Dense(10, activation='relu'))
-        model.add(Dropout(drop_out))
-        model.add(Dense(self.output.shape[1], activation=activation))
-
+        model = get_standard_model(self.input.shape[1:], self.output[0].shape, activation, keep_prob)
         model.compile(loss=loss, optimizer=optimizer,
                       metrics=metrics)
         history = model.fit(self.input.reshape(self.input.shape + (1,)), self.output,
@@ -624,3 +606,37 @@ class MachineLearning:
             with open(filename, 'wb') as f:
                 pickle.dump(random_forest_clf, f)
         return random_forest_clf
+
+
+def get_standard_model(input_shape, output_shape, activation, keep_prob):
+    """
+    Generates the Keras model which is used for all neural nets
+    :param input_shape: tuple, input dimensions
+    :param output_shape: tuple, output dimensions
+    :param activation: str, activation function for the final layer
+    :param keep_prob: float, used for dropout layers
+    :return:
+    """
+
+    if input_shape[-1] not in (1, 3):
+        input_shape = tuple(input_shape) + (1, )
+
+    model = keras.models.Sequential()
+    model.add(
+        Conv2D(24, kernel_size=(5, 5), strides=(2, 2), activation='relu', input_shape=input_shape))
+    model.add(Conv2D(36, kernel_size=(5, 5), strides=(2, 2), activation='relu'))
+    model.add(Conv2D(48, kernel_size=(5, 5), strides=(2, 2), activation='relu'))
+    model.add(Conv2D(64, kernel_size=(3, 3), activation='relu'))
+    model.add(Conv2D(64, kernel_size=(3, 3), activation='relu'))
+    model.add(Flatten())
+    model.add(Dense(1164, activation='relu'))
+    drop_out = 1 - keep_prob
+    model.add(Dropout(drop_out))
+    model.add(Dense(100, activation='relu'))
+    model.add(Dropout(drop_out))
+    model.add(Dense(50, activation='relu'))
+    model.add(Dropout(drop_out))
+    model.add(Dense(10, activation='relu'))
+    model.add(Dropout(drop_out))
+    model.add(Dense(output_shape, activation=activation))
+    return model
