@@ -1,6 +1,4 @@
 import os
-from PIL import Image
-import os
 import shutil
 import imagehash
 from PIL import Image
@@ -8,6 +6,7 @@ import numpy as np
 import yaml
 import time
 import keras.models
+import plotly
 
 
 def get_false_positives():
@@ -116,10 +115,10 @@ def trim_image(images, player=1, prefix='trimmed_', overwrite=True, remove_timer
 
 def identical_images(image1, image2):
     """
-
-    :param image1:
-    :param image2:
-    :return:
+    Tests if two images are identical
+    :param image1: str, path to first image
+    :param image2: str, path to second image
+    :return: bool, True if images are identical, False if not
     """
     img1 = Image.open(image1)
     img1.load()
@@ -138,10 +137,10 @@ def remove_redundant_files(filenames, pressed_buttons):
     :return:
     """
     if len(filenames) != len(pressed_buttons):
-        # TO DO, raise error
+        # TODO, raise error
         return filenames, pressed_buttons
     redundant_filefound = True
-    to_be_removed = list()
+    to_be_removed = []
     while redundant_filefound:
         redundant_filefound = False
         for i in range(len(filenames) - 1):
@@ -170,3 +169,67 @@ def load_model(modelname):
         model = keras.models.model_from_json(f.read())
     model.load_weights('{}_weights.h5'.format(modelname))
     return model
+
+
+def visualize_model(pred, output):
+    acc = {}
+    pos = {}
+    neg = {}
+    for threshold in range(0, 11, 1):
+        threshold = float(threshold) / 10.0
+        print(threshold)
+        acc[threshold] = []
+        pos[threshold] = []
+        neg[threshold] = []
+        for i, prediction in enumerate(pred):
+            acc[threshold].append((prediction >= threshold) == output[i])
+            pos[threshold].append(((prediction * output[i] >= threshold) == output[i]) * output[i])
+            neg[threshold].append(np.abs((prediction >= threshold).astype('int8') - output[i]))
+
+    ys = []
+    xs = []
+    for x, y in pos.items():
+        xs.append(x)
+        ys.append(np.sum(y) / np.sum(output))
+
+    trace1 = plotly.graph_objs.Scatter(x=xs, y=ys, name='true positive')
+
+    ys = []
+    for x, y in neg.items():
+        ys.append(np.sum(y) / ((3 * len(output)) - np.sum(output)))
+
+    trace2 = plotly.graph_objs.Scatter(x=xs, y=ys, name='false positive')
+
+    ys = []
+    for i, y in enumerate(trace1.y):
+        ys.append(y / trace2.y[i])
+
+    ys = [y / max(ys) for y in ys]
+    trace3 = plotly.graph_objs.Scatter(x=xs, y=ys, name='accuracy')
+
+    fig = plotly.graph_objs.Figure([trace1, trace2, trace3])
+    plotly.offline.plot(fig)
+    return acc, pos, neg
+
+
+def remove_failed_jobs(folder, suffix='txt', job_suffix='weights-2', threshold=100):
+    """
+    """
+    files = [os.path.join(folder, f) for f in os.listdir(folder) if f.endswith(suffix)]
+    for file in files:
+        with open(file, 'r') as f:
+            txt = f.read()
+        try:
+            score = float(txt)
+        except ValueError:
+            print('failed to read value from {}'.format(file))
+            continue
+        if score >= threshold:
+            try:
+                os.remove(file)
+                print('removed file {} with score: {}'.format(file, score))
+                file = job_suffix.join(file.rsplit(suffix, 1))
+                os.remove(file)
+                print('removed job file'.format(file))
+            except (OSError, IOError, FileNotFoundError):
+                print('failed to remove file {}'.format(file))
