@@ -253,7 +253,7 @@ class GameServer:
             server_receive = self.server.receive
             decoder = self.decoder_post
             server_send = self.server.send
-            server_final = str # just a dummy which does nothing
+            server_final = str  # just a dummy which does nothing
         else:
             raise ValueError('method must be socket or http')
 
@@ -295,7 +295,7 @@ class GameServer:
         img_buf = server_receive(image=True)
         try:
             server_final()
-        except: # that's fine
+        except:  # that's fine
             pass
         return img_buf
 
