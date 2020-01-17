@@ -276,9 +276,13 @@ def play(args=None, state=None, modelname=None):
                    socket_ip=socket.gethostbyname(socket.gethostname()),
                    socket_port=9000 + os.getpid() % 1000)
     print('initialized gameserver')
+    if args.lua in ('', None):
+        lua_script = 'lua/listen_socket_screenshot.lua'
+    else:
+        lua_script = args.lua
     e = Emuhawk(socket_ip=g.server.ip,
                 socket_port=g.server.port,
-                lua_script=os.path.join(os.getcwd(), 'lua/listen_socket_screenshot.lua'))
+                lua_script=os.path.join(os.getcwd(), lua_script))
     print('initialized emuhawk')
     if not os.path.isfile(state):
         state = os.path.join(os.getcwd(), state)
@@ -339,6 +343,7 @@ def parse_args(sys_args):
     parser.add_argument("--pickle_files", default=None, nargs=2)
     parser.add_argument("--workers", default=1, type=str)
     parser.add_argument("--bizhawk_config", default='', type=str)
+    parser.add_argument('--lua', default=None, type=str)
     args = parser.parse_args(sys_args)
     return args
 
