@@ -146,7 +146,7 @@ class GameServer:
         return message.split('=')[-1]
 
     def ai(self, method=None, run_time=5*60, max_index=5000, modelname='model', model=None,
-           threshold=0.4, missing=None, bit_array=False, rounds=1):
+           threshold=0.4, missing=None, bit_array=False, rounds=1, min_frames=300):
         """
 
         :param method:
@@ -183,7 +183,6 @@ class GameServer:
         index = 0
 
         ml = MachineLearning()
-        index_finishline_passed = 0
         while time.time() - start_time < run_time:
 
             buf = server_receive(image=True)
@@ -198,8 +197,7 @@ class GameServer:
                 buf += server_receive()
 
             # check if finish line was passed
-            if img is not None and index > (index_finishline_passed + 1000) and self.predict_finishline(img):
-                index_finishline_passed = index
+            if img is not None and index > min_frames and self.predict_finishline(img):
                 rounds -= 1
                 if rounds <= 0:
                     self.printer.log('breaking because finish line was recognized')
