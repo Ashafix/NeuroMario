@@ -146,7 +146,8 @@ class GameServer:
         return message.split('=')[-1]
 
     def ai(self, method=None, run_time=5*60, max_index=5000, modelname='model', model=None,
-           threshold=0.4, missing=None, bit_array=False, rounds=1, min_frames=300):
+           threshold=0.4, missing=None, bit_array=False, rounds=1, min_frames=300,
+           predictor=None, predictor_finish_line=None, converter_image_to_time=None, on_img_error=None):
         """
 
         :param method:
@@ -161,6 +162,11 @@ class GameServer:
         :param rounds: int, number of rounds to run
         :return:
         """
+
+        if predictor_finish_line is None:
+            predictor_finish_line = self.predict_finishline
+        if converter_image_to_time is None:
+            converter_image_to_time = lambda x: self.running_time_to_seconds(self.predict_running_time(x))
         if method == 'socket':
             server_receive = self.server.receive
             decoder = self.decoder_dummy
@@ -194,10 +200,20 @@ class GameServer:
 
             except OSError as e:
                 self.printer.log((e, index))
+                if on_img_error is not None:
+                    buf = server_receive(image=False)
+                    try:
+                        resp = on_img_error(buf)
+                    # noinspection PyBroadException
+                    except:
+                        resp = None
+                    if resp is not None:
+                        self.printer.log('breaking because finish time was sent')
+                        return resp
                 buf += server_receive()
 
             # check if finish line was passed
-            if img is not None and index > min_frames and self.predict_finishline(img):
+            if img is not None and index > min_frames and predictor_finish_line(img):
                 rounds -= 1
                 if rounds <= 0:
                     self.printer.log('breaking because finish line was recognized')
@@ -222,7 +238,7 @@ class GameServer:
                     except:
                         self.printer.log('failed')
                         not_send -= 1
-        return self.running_time_to_seconds(self.predict_running_time(img.convert('L')))
+        return converter_image_to_time(img)
 
     def replay(self, joypad_sequence, method=None,
                run_time=2*60):
@@ -269,6 +285,7 @@ class GameServer:
                         resp = joypad_sequence[index]
                     else:
                         break
+                # noinspection PyBroadException
                 except:
                     index = -1
                     resp = None
@@ -291,6 +308,8 @@ class GameServer:
         server_send(b'screenshot')
         time.sleep(0.1)
         img_buf = server_receive(image=True)
+
+        # noinspection PyBroadException
         try:
             server_final()
         except:  # that's fine
@@ -410,7 +429,7 @@ class GameServer:
                 index += 1
 
         if finished:
-            running_time = self.running_time_to_seconds(self.predict_running_time(Image.open(io.BytesIO(buf)).convert('L')))
+            running_time = self.running_time_to_seconds(self.predict_running_time(Image.open(io.BytesIO(buf))))
         else:
             running_time = 0
 
@@ -425,6 +444,10 @@ class GameServer:
         :param output: boolean, true shows the image in an IPython notebook
         :return: string with the joined digits, not converted to a "real" time
         """
+
+        if image.mode != 'L':
+            image = image.convert('L')
+
         crop_numbers = (176, 7, 242, 21)
         crop_digits = [0, 8, 24, 32, 48, 56]
         main_img = image.crop(crop_numbers)
@@ -449,7 +472,7 @@ class GameServer:
         :param filename: the filename with the image
         :return:
         """
-        image = Image.open(filename).convert('L')
+        image = Image.open(filename)
         return self.predict_running_time(image)
 
     @staticmethod
