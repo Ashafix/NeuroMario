@@ -230,3 +230,20 @@ class Joypad:
             else:
                 return_bytes = new_return_buttons
         return return_bytes
+
+
+def get_missing_values(model):
+    """
+    Adds missing joypad values to output
+    assumes that if the model produces an output array of size 4 that B, left, right, L are valid options
+    assumes that if the model produces an output array of size 3 that B, left, right are valid options
+    :param model:
+    :return:
+    """
+    if model.get_weights()[-1].size == 4:
+        missing = [0, 1, 4, 5, 6, 8, 9, 11]
+    elif model.get_weights()[-1].size == 3:
+        missing = [0, 1, 4, 5, 6, 8, 9, 10, 11]
+    else:
+        raise ValueError("Could not guess which input values are missing based on the output")
+    return missing
