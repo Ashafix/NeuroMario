@@ -68,7 +68,12 @@ class Emuhawk:
         else:
             self.url_get = url_get
             self.url_post = url_post
-        self.lua_script = lua_script
+        if lua_script is not None:
+            self.lua_script = os.path.abspath(lua_script)
+            if not os.path.isfile(self.lua_script):
+                raise RuntimeError('lua script not found: {}'.format(self.lua_script))
+        else:
+            self.lua_script = None
         if movies is not None:
             for movie in movies:
                 self.append_movie(movie)
