@@ -649,10 +649,9 @@ class GameServer:
         """
         if isinstance(image, str):
             image = Image.open(image)
-        #try:
+
         image = image.crop(self.crop_box)
-        #except:
-        #    image = Image.new('RGB', (self.crop_box[2] - self.crop_box[0], self.crop_box[3] - self.crop_box[1]))
+
         image_hash = imagehash.whash(image, hash_size=self.hashsize)
         return image_hash
 
