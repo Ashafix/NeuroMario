@@ -12,6 +12,14 @@ from GameServer import GameServer
 import utils
 
 
+def msg_to_time(msg):
+    try:
+        msg = int(msg)
+    except:
+        msg = 100
+    return msg
+
+
 class Learn:
     def __init__(self, model, weights_index, args, best_score=21.19):
         self.best_score = best_score
@@ -45,7 +53,7 @@ class Learn:
         _weights[self.weights_index] = adjusted_weights.reshape(self.initial_shape)
         self.model.set_weights(_weights)
         if keep_hash:
-            hash_digest = hashlib.sha1(_weights[-2]).hexdigest()
+            hash_digest = hashlib.sha1(_weights[self.weights_index]).hexdigest()
             filename = '{}/{}.txt'.format(folder, hash_digest)
             if os.path.isfile(filename):
                 with open(filename, 'r') as f:
@@ -58,39 +66,27 @@ class Learn:
                        socket_port=9000 + os.getpid() % 1000)
         e = Emuhawk(socket_ip=g.server.ip,
                     socket_port=g.server.port,
-                    lua_script=os.path.join(os.getcwd(), 'lua/listen_socket_screenshot.lua'),
+                    lua_script=self.args.lua,
                     config_file=self.args.bizhawk_config)
-        if self.state is None:
-            e.state = os.path.join(os.getcwd(), 'states/GhostValley_2.State')
-        else:
-            e.state = self.state
+        e.state = self.state
         e.start()
         g.server.create_connection(timeout=60)
         missing = get_missing_values(self.model)
+
         x = g.ai(method='socket',
                  model=self.model,
                  missing=missing,
                  threshold=self.args.play_threshold,
-                 bit_array=self.args.bit_array)
+                 bit_array=self.args.bit_array,
+                 predictor_finish_line=lambda x: False,
+                 on_img_error=msg_to_time)
 
         if keep_hash:
             with open('{}/{}.txt'.format(folder, hash_digest), 'w') as f:
                 f.write(str(x))
-            with open('{}/{}.weights-2'.format(folder, hash_digest), 'wb') as f:
-                pickle.dump(_weights[-2], f)
-        
-        if x != self.best_score:
-            xx = g.ai(method='socket',
-                      model=self.model,
-                      missing=missing,
-                      threshold=self.args.play_threshold,
-                      bit_array=self.args.bit_array)
-            if x != xx:
-                print('something went wrong, {} vs {}'.format(x, xx))
-            if xx != self.best_score and xx != 100:
-                print('new best score: {}'.format(xx))
-                self.best_score = xx
-                return xx
+            with open('{}/{}.weights-{}'.format(folder, hash_digest, self.weights_index), 'wb') as f:
+                pickle.dump(_weights[self.weights_index], f)
+
         print(x)
         return x
 
@@ -292,11 +288,13 @@ def play(args=None, state=None, modelname=None):
     g.server.create_connection(timeout=60)
     missing = get_missing_values(model)
     print('created connection')
+
     return g.ai(method='socket',
                 model=model,
                 missing=missing,
                 threshold=args.play_threshold,
-                bit_array=args.bit_array)
+                bit_array=args.bit_array,
+                on_img_error=msg_to_time)
 
 
 def test_model(args):
@@ -412,4 +410,4 @@ if __name__ == '__main__':
     args = parse_args(sys.argv[1:])
     if args is None:
         sys.exit(1)
-    main(args)
+    print(main(args))
