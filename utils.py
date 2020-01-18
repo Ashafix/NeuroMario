@@ -1,5 +1,4 @@
 import os
-import shutil
 import imagehash
 from PIL import Image
 import numpy as np
@@ -233,3 +232,19 @@ def remove_failed_jobs(folder, suffix='txt', job_suffix='weights-2', threshold=1
                 print('removed job file'.format(file))
             except (OSError, IOError, FileNotFoundError):
                 print('failed to remove file {}'.format(file))
+
+
+def msg_to_time(msg):
+    """
+    Simple conversion of a string to int
+    :param msg: str, to be converted
+    :return: int, int conversion of msg
+    """
+    """
+    
+    """
+    try:
+        msg = int(msg)
+    except:
+        msg = 100
+    return msg

@@ -420,7 +420,7 @@ class MachineLearning:
                 inp = inp.decode()
             self.possibilities.add(inp[pipes[player] + 1:pipes[player + 1]])
         output_array = np.zeros((len(self.pressed_keys), pipes[2] - pipes[1] - 1),
-                                    dtype=np.uint8)
+                                dtype=np.uint8)
 
         for i, inp in enumerate(self.pressed_keys):
             if isinstance(inp, bytes):
