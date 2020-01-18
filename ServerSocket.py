@@ -6,6 +6,7 @@ import io
 import numpy as np
 import pickle
 from Printer import Printer, PrinterDummy
+from GameServer import GameServer
 
 
 class ServerSocket:
@@ -32,6 +33,7 @@ class ServerSocket:
         else:
             self.printer = printer
         self.img = None
+        self.game_server = GameServer(http_autostart=False, socket_autostart=False, verbose=False)
 
     def __str__(self):
         resp = '{}: ip: {}, port: {}'.format(type(self).__name__, self.ip, self.port)
@@ -138,9 +140,9 @@ class ServerSocket:
                         hash_repeat = 0
                     self.printer.log(datetime.datetime.utcnow().strftime('%M:%S.%f')[:-3])
                     try:
-                        resp = self.img_to_joypad(image_obj)
+                        resp = self.game_server.img_to_joypad(image_obj)
                     except:
-                        resp = bytes(self.default_joypad(), 'utf-8')
+                        resp = bytes(self.game_server.default_joypad(), 'utf-8')
                         self.hashes[new_hash].append(resp)
 
                     if hash_repeat > 500:
@@ -185,7 +187,7 @@ class ServerSocket:
                 try:
                     # for broken streams which deliver partial PNGs
                     image_obj = Image.open(io.BytesIO(img))
-                    img_hash = self.calculate_img_hash(image_obj)
+                    img_hash = self.game_server.calculate_img_hash(image_obj)
                     image_gray = image_obj.convert('L')
                 except:
                     image_obj = None
@@ -224,7 +226,7 @@ class ServerSocket:
             if image_obj and img_hash:
                 self.image_obj = image_obj
                 try:
-                    new_hash = str(self.calculate_img_hash(image_obj.crop((0, 25, 256, 224))))
+                    new_hash = str(self.game_server.calculate_img_hash(image_obj.crop((0, 25, 256, 224))))
                 except:
                     pass
                 if new_hash == last_hash:
@@ -264,7 +266,7 @@ class ServerSocket:
                     fails += 1
                     resp = b'Restart'
                 else:
-                    resp = self.hash_to_joypad(img_hash, learn=True, allow_random=False)
+                    resp = self.game_server.hash_to_joypad(img_hash, learn=True, allow_random=False)
                 not_send = 1000
                 while not_send > 0:
                     try:
