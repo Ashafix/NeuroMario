@@ -26,7 +26,6 @@ def workflow_learn(args, index=-2, seed=42, modelname='model_binary_crossentropy
         modelname = args.model
     model = utils.load_model(modelname)
     learn = Learn(model, index, args)
-    learn.state = args.state
     bounds = []
     weights = model.get_weights()[index].flatten()
     for i in range(weights.size):
@@ -212,6 +211,43 @@ def test_model(args):
     ml.test_neural_net()
 
 
+def replay_with_weights(args):
+
+    model = utils.load_model(args.model)
+
+    with open(args.weights, 'rb') as f:
+        weights = pickle.load(f)
+    _weights = model.get_weights()
+
+    _weights[-2] = weights
+    model.set_weights(_weights)
+
+    g = GameServer(socket_autostart=True,
+                   socket_ip=socket.gethostbyname(socket.gethostname()),
+                   socket_port=9000 + os.getpid() % 1000)
+    print('initialized gameserver')
+
+    e = Emuhawk(socket_ip=g.server.ip,
+                socket_port=g.server.port,
+                lua_script=os.path.join(os.getcwd(), args.lua))
+    print('initialized emuhawk')
+    state = os.path.join(os.getcwd(), args.state)
+    e.state = state
+    e.start()
+    print('started emuhawk')
+    g.server.create_connection(timeout=60)
+    missing = get_missing_values(model)
+    print('created connection')
+
+    return g.ai(method='socket',
+                model=model,
+                missing=missing,
+                threshold=args.play_threshold,
+                bit_array=args.bit_array,
+                on_img_error=utils.msg_to_time)
+
+
+
 def parse_args(sys_args):
     """
     Parse command line arguments and returns parsed arguments
@@ -220,8 +256,8 @@ def parse_args(sys_args):
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("command", choices=('learn', 'replay_best', 'replay_initial', 'find_best_score', 'build_model',
-                                            'play', 'test', 'clean', 'create_state'))
-    parser.add_argument("--model")
+                                            'play', 'test', 'clean', 'create_state', 'replay_with_weights'))
+    parser.add_argument("--model", default=None, type=str)
     parser.add_argument("--state", default='states/GhostValley_2.State', type=str)
     parser.add_argument("--activation", default='sigmoid', type=str)
     parser.add_argument("--epochs", default=10, type=int)
@@ -244,6 +280,8 @@ def parse_args(sys_args):
     parser.add_argument("--workers", default=1, type=str)
     parser.add_argument("--bizhawk_config", default='', type=str)
     parser.add_argument('--lua', default=None, type=str)
+    parser.add_argument('--weights', default=None, type=str)
+    parser.add_argument('--predict_finishline', default=False, type=lambda s: s.lower() in ['true', 't', 'yes', '1'])
     args = parser.parse_args(sys_args)
     return args
 
@@ -299,6 +337,7 @@ def main(args):
         'replay_best': replay_best,
         'replay_initial': replay_initial,
         'find_best_score': find_best_score,
+        'replay_with_weights': replay_with_weights,
         'build_model': build_model,
         'play': play,
         'create_state': create_state
