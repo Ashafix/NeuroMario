@@ -6,7 +6,6 @@ import io
 import numpy as np
 import pickle
 from Printer import Printer, PrinterDummy
-from GameServer import GameServer
 
 
 class ServerSocket:
@@ -33,7 +32,6 @@ class ServerSocket:
         else:
             self.printer = printer
         self.img = None
-        self.game_server = GameServer(http_autostart=False, socket_autostart=False, verbose=False)
 
     def __str__(self):
         resp = '{}: ip: {}, port: {}'.format(type(self).__name__, self.ip, self.port)
